@@ -1,7 +1,7 @@
 # Reading Study
 
 
-Take part in the survey: [(https://wseminar-studie.vercel.app/)]
+Take part in the survey: https://wseminar-studie.vercel.app/
 
 #Why
 I created this small webapp in order to execute a study to investigate the efficacy of popular speed reading methods such as suppressing subvocalisation or skimming. 
