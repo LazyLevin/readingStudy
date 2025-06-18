@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,8 +24,7 @@ import {
 } from "recharts"
 import type { Payload } from "recharts/types/component/Tooltip"
 import { LogOut, Download, FileImage, FileText } from "lucide-react"
-import html2canvas from "html2canvas"
-import jsPDF from "jspdf"
+import { downloadCSV, exportAllChartsAsPDF, exportChartAsImage, exportChartAsSVG } from "@/lib/exportUtils"
 
 type Result = {
   id: string
@@ -74,6 +71,12 @@ export default function AdminDashboard() {
   const [authLoading, setAuthLoading] = useState(true)
   const [loginError, setLoginError] = useState("")
   const [exportingCharts, setExportingCharts] = useState(false)
+  const [dataReady, setDataReady] = useState(false)
+  const [timeVsMistakeData, setTimeVsMistakeData] = useState([])
+  const [testGroupData, setTestGroupData] = useState([])
+  const [individualData, setIndividualData] = useState([])
+  const [avgTimeData, setAvgTimeData] = useState([])
+  const [avgErrorData, setAvgErrorData] = useState([])
 
   // Refs for chart containers
   const scatterChartRef = useRef<HTMLDivElement>(null)
@@ -127,6 +130,7 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     setLoading(true)
+    setDataReady(false)
     try {
       // Fetch all results from the flat collection for backward compatibility
       const resultsSnapshot = await getDocs(collection(db, "reading_study_results"))
@@ -199,6 +203,7 @@ export default function AdminDashboard() {
       const allResults = [...resultsData, ...additionalResults]
       setResults(allResults)
       setUserData(usersData)
+      setDataReady(true)
 
       console.log("Fetched results:", allResults.length)
       console.log("Fetched users:", usersData.length)
@@ -210,183 +215,7 @@ export default function AdminDashboard() {
     setLoading(false)
   }
 
-  const downloadCSV = () => {
-    // Create CSV content
-    const headers = [
-      "Spitzname",
-      "Testgruppe",
-      "Technik",
-      "Phase 1 Lesezeit (s)",
-      "Phase 1 Punkte",
-      "Phase 1 Fehlerquote",
-      "Phase 2 Lesezeit (s)",
-      "Phase 2 Punkte",
-      "Phase 2 Fehlerquote",
-      "Zeitverbesserung (%)",
-      "Genauigkeitsänderung (%)",
-    ]
-    const csvRows = [headers]
-
-    userData
-      .filter((user) => user.results?.phase1 && user.results?.phase2)
-      .forEach((user) => {
-        const phase1 = user.results.phase1
-        const phase2 = user.results.phase2
-        const timeImprovement = ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
-        const accuracyChange = ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
-
-        const row = [
-          user.nickname,
-          user.testGroup,
-          user.technique,
-          phase1.readingTime.toFixed(1),
-          phase1.score,
-          phase1.mistakeRatio.toFixed(2),
-          phase2.readingTime.toFixed(1),
-          phase2.score,
-          phase2.mistakeRatio.toFixed(2),
-          timeImprovement.toFixed(1),
-          accuracyChange.toFixed(1),
-        ]
-        csvRows.push(row)
-      })
-
-    const csvContent = csvRows.map((row) => row.join(",")).join("\n")
-
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.setAttribute("hidden", "")
-    a.setAttribute("href", url)
-    a.setAttribute("download", "reading_study_results.csv")
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-  }
-
-  const exportChartAsImage = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
-    if (!chartRef.current) return
-
-    try {
-      // Wait a bit for the chart to fully render
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const canvas = await html2canvas(chartRef.current, {
-        scale: 3, // High resolution for scientific papers
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: chartRef.current.offsetWidth,
-        height: chartRef.current.offsetHeight,
-      })
-
-      // Download as PNG
-      const link = document.createElement("a")
-      link.download = `${filename}.png`
-      link.href = canvas.toDataURL("image/png")
-      link.click()
-    } catch (error) {
-      console.error("Error exporting chart:", error)
-    }
-  }
-
-  const exportChartAsSVG = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
-    if (!chartRef.current) return
-
-    try {
-      // Find the SVG element within the chart
-      const svgElement = chartRef.current.querySelector("svg")
-      if (!svgElement) {
-        console.error("No SVG found in chart")
-        return
-      }
-
-      // Clone the SVG to avoid modifying the original
-      const clonedSvg = svgElement.cloneNode(true) as SVGElement
-
-      // Set explicit dimensions and background
-      clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
-      clonedSvg.style.backgroundColor = "#ffffff"
-
-      // Serialize the SVG
-      const serializer = new XMLSerializer()
-      const svgString = serializer.serializeToString(clonedSvg)
-
-      // Create blob and download
-      const blob = new Blob([svgString], { type: "image/svg+xml" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.download = `${filename}.svg`
-      link.href = url
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error("Error exporting SVG:", error)
-    }
-  }
-
-  const exportAllChartsAsPDF = async () => {
-    setExportingCharts(true)
-
-    try {
-      const pdf = new jsPDF("l", "mm", "a4") // Landscape orientation for better chart visibility
-      const chartRefs = [
-        { ref: scatterChartRef, title: "Lesezeit vs. Fehlerquote" },
-        { ref: avgTimeChartRef, title: "Durchschnittliche Lesezeit" },
-        { ref: avgErrorChartRef, title: "Durchschnittliche Fehlerquote" },
-        { ref: techniqueComparisonRef, title: "Vergleich der Schnelllesetechniken" },
-        { ref: timeByTechniqueRef, title: "Lesezeit nach Technik" },
-        { ref: errorByTechniqueRef, title: "Fehlerquote nach Technik" },
-        { ref: individualImprovementRef, title: "Individuelle Verbesserung" },
-      ]
-
-      for (let i = 0; i < chartRefs.length; i++) {
-        const { ref, title } = chartRefs[i]
-
-        if (ref.current) {
-          // Wait for chart to render
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-
-          const canvas = await html2canvas(ref.current, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          })
-
-          const imgData = canvas.toDataURL("image/png")
-
-          if (i > 0) {
-            pdf.addPage()
-          }
-
-          // Add title
-          pdf.setFontSize(16)
-          pdf.text(title, 20, 20)
-
-          // Calculate dimensions to fit the page
-          const pageWidth = pdf.internal.pageSize.getWidth()
-          const pageHeight = pdf.internal.pageSize.getHeight()
-          const imgWidth = pageWidth - 40 // 20mm margin on each side
-          const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-          // Add image
-          pdf.addImage(imgData, "PNG", 20, 30, imgWidth, Math.min(imgHeight, pageHeight - 50))
-        }
-      }
-
-      pdf.save("lesestudie_diagramme.pdf")
-    } catch (error) {
-      console.error("Error creating PDF:", error)
-    } finally {
-      setExportingCharts(false)
-    }
-  }
-
-  // Prepare data for time vs mistake ratio chart
+  // Prepare data functions
   const prepareTimeVsMistakeData = () => {
     if (!results || results.length === 0) {
       return []
@@ -411,7 +240,6 @@ export default function AdminDashboard() {
     return [...normalReadingData, ...speedReadingData]
   }
 
-  // Prepare data for test group comparison
   const prepareTestGroupData = () => {
     if (!userData || userData.length === 0) {
       return []
@@ -471,7 +299,6 @@ export default function AdminDashboard() {
     return Object.values(groupData).filter((d) => d.count > 0)
   }
 
-  // Prepare data for individual improvement
   const prepareIndividualImprovementData = () => {
     if (!userData || userData.length === 0) {
       return []
@@ -506,7 +333,6 @@ export default function AdminDashboard() {
     })
   }
 
-  // Prepare average time data
   const prepareAverageTimeData = () => {
     if (!userData || userData.length === 0) {
       return []
@@ -530,7 +356,6 @@ export default function AdminDashboard() {
     ]
   }
 
-  // Prepare average error data
   const prepareAverageErrorData = () => {
     if (!userData || userData.length === 0) {
       return []
@@ -553,6 +378,16 @@ export default function AdminDashboard() {
       },
     ]
   }
+
+  useEffect(() => {
+    if (dataReady) {
+      setTimeVsMistakeData(prepareTimeVsMistakeData())
+      setTestGroupData(prepareTestGroupData())
+      setIndividualData(prepareIndividualImprovementData())
+      setAvgTimeData(prepareAverageTimeData())
+      setAvgErrorData(prepareAverageErrorData())
+    }
+  }, [dataReady, userData, results])
 
   // Show loading spinner while checking authentication
   if (authLoading) {
@@ -614,20 +449,27 @@ export default function AdminDashboard() {
     )
   }
 
-  // Get the prepared data
-  const timeVsMistakeData = prepareTimeVsMistakeData()
-  const testGroupData = prepareTestGroupData()
-  const individualData = prepareIndividualImprovementData()
-  const avgTimeData = prepareAverageTimeData()
-  const avgErrorData = prepareAverageErrorData()
+  // Only prepare data when it's ready
+  // const timeVsMistakeData = dataReady ? prepareTimeVsMistakeData() : []
+  // const testGroupData = dataReady ? prepareTestGroupData() : []
+  // const individualData = dataReady ? prepareIndividualImprovementData() : []
+  // const avgTimeData = dataReady ? prepareAverageTimeData() : []
+  // const avgErrorData = dataReady ? prepareAverageErrorData() : []
 
-  console.log("Chart data prepared:", {
-    timeVsMistakeData: timeVsMistakeData.length,
-    testGroupData: testGroupData.length,
-    individualData: individualData.length,
-    avgTimeData: avgTimeData.length,
-    avgErrorData: avgErrorData.length,
-  })
+  // Add this useEffect to log when data is prepared
+  useEffect(() => {
+    if (dataReady) {
+      console.log("Chart data prepared:", {
+        timeVsMistakeData: timeVsMistakeData.length,
+        testGroupData: testGroupData.length,
+        individualData: individualData.length,
+        avgTimeData: avgTimeData.length,
+        avgErrorData: avgErrorData.length,
+      })
+      console.log("Sample timeVsMistakeData:", timeVsMistakeData.slice(0, 2))
+      console.log("Sample testGroupData:", testGroupData.slice(0, 2))
+    }
+  }, [dataReady, userData, results, timeVsMistakeData, testGroupData, individualData, avgTimeData, avgErrorData])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -822,7 +664,10 @@ export default function AdminDashboard() {
                 </Card>
 
                 <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                  <CardHeader
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white
+                    "
+                  >
                     <div className="flex justify-between items-center">
                       <div>
                         <CardTitle>Durchschnittliche Fehlerquote</CardTitle>
