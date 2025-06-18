@@ -71,7 +71,7 @@ export default function AdminDashboard() {
       setAuthenticated(true)
       fetchData()
     } else {
-      alert("Incorrect password")
+      alert("Falsches Passwort")
     }
   }
 
@@ -127,17 +127,17 @@ export default function AdminDashboard() {
   const downloadCSV = () => {
     // Create CSV content
     const headers = [
-      "Nickname",
-      "Test Group",
-      "Technique",
-      "Phase 1 Reading Time (s)",
-      "Phase 1 Score",
-      "Phase 1 Mistake Ratio",
-      "Phase 2 Reading Time (s)",
-      "Phase 2 Score",
-      "Phase 2 Mistake Ratio",
-      "Time Improvement (%)",
-      "Accuracy Change (%)",
+      "Spitzname",
+      "Testgruppe",
+      "Technik",
+      "Phase 1 Lesezeit (s)",
+      "Phase 1 Punkte",
+      "Phase 1 Fehlerquote",
+      "Phase 2 Lesezeit (s)",
+      "Phase 2 Punkte",
+      "Phase 2 Fehlerquote",
+      "Zeitverbesserung (%)",
+      "Genauigkeitsänderung (%)",
     ]
     const csvRows = [headers]
 
@@ -186,7 +186,7 @@ export default function AdminDashboard() {
       .map((r) => ({
         readingTime: r.readingTime,
         mistakeRatio: r.mistakeRatio || (r.totalQuestions - r.score) / r.totalQuestions,
-        type: "Normal Reading",
+        type: "Normales Lesen",
       }))
 
     const speedReadingData = results
@@ -194,7 +194,7 @@ export default function AdminDashboard() {
       .map((r) => ({
         readingTime: r.readingTime,
         mistakeRatio: r.mistakeRatio || (r.totalQuestions - r.score) / r.totalQuestions,
-        type: "Speed Reading",
+        type: "Schnelllesen",
       }))
 
     return [...normalReadingData, ...speedReadingData]
@@ -208,7 +208,7 @@ export default function AdminDashboard() {
     for (let i = 1; i <= 3; i++) {
       groupData[i] = {
         group: i,
-        technique: ["Skimming Technique", "Pointer Technique", "Minimize Subvocalization"][i - 1],
+        technique: ["Skimming-Technik", "Zeiger-Technik", "Subvokalisierung minimieren"][i - 1],
         normalReadingTime: 0,
         speedReadingTime: 0,
         normalMistakeRatio: 0,
@@ -278,23 +278,24 @@ export default function AdminDashboard() {
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Admin Dashboard</CardTitle>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md shadow-lg border-0">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+            <CardTitle className="text-center text-2xl">Admin Dashboard</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-6">
             <div className="space-y-2">
               <Input
                 type="password"
-                placeholder="Enter admin password"
+                placeholder="Admin-Passwort eingeben"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && authenticate()}
+                className="border-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <Button onClick={authenticate} className="w-full">
-              Login
+            <Button onClick={authenticate} className="w-full bg-blue-600 hover:bg-blue-700">
+              Anmelden
             </Button>
           </CardContent>
         </Card>
@@ -303,314 +304,430 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-8">Reading Study Results</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="container mx-auto py-8 px-4 max-w-7xl">
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+          <h1 className="text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
+          <p className="text-gray-600 mb-6">Administrationsbereich für die Analyse der Studienergebnisse</p>
 
-      <div className="mb-6 flex justify-between items-center">
-        <Button onClick={fetchData} disabled={loading}>
-          {loading ? "Loading..." : "Refresh Data"}
-        </Button>
-        <Button onClick={downloadCSV} disabled={userData.length === 0}>
-          Download CSV
-        </Button>
-      </div>
-
-      {userData.length > 0 ? (
-        <Tabs defaultValue="overview" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="techniques">Technique Comparison</TabsTrigger>
-            <TabsTrigger value="individual">Individual Results</TabsTrigger>
-            <TabsTrigger value="raw">Raw Data</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Reading Time vs. Mistake Ratio</CardTitle>
-                <CardDescription>
-                  Comparing normal reading vs. speed reading performance across all participants
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="h-[500px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid />
-                    <XAxis
-                      type="number"
-                      dataKey="readingTime"
-                      name="Reading Time"
-                      label={{ value: "Reading Time (seconds)", position: "bottom" }}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="mistakeRatio"
-                      name="Mistake Ratio"
-                      label={{ value: "Mistake Ratio", angle: -90, position: "insideLeft" }}
-                    />
-                    <ZAxis range={[60, 60]} />
-                    <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                    <Legend />
-                    <Scatter
-                      name="Normal Reading"
-                      data={prepareTimeVsMistakeData().filter((d) => d.type === "Normal Reading")}
-                      fill="#8884d8"
-                    />
-                    <Scatter
-                      name="Speed Reading"
-                      data={prepareTimeVsMistakeData().filter((d) => d.type === "Speed Reading")}
-                      fill="#82ca9d"
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Average Reading Time</CardTitle>
-                  <CardDescription>Normal vs. Speed Reading</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={[
-                        {
-                          name: "Reading Time",
-                          "Normal Reading":
-                            userData
-                              .filter((u) => u.results?.phase1)
-                              .reduce((acc, u) => acc + u.results.phase1.readingTime, 0) /
-                            Math.max(1, userData.filter((u) => u.results?.phase1).length),
-                          "Speed Reading":
-                            userData
-                              .filter((u) => u.results?.phase2)
-                              .reduce((acc, u) => acc + u.results.phase2.readingTime, 0) /
-                            Math.max(1, userData.filter((u) => u.results?.phase2).length),
-                        },
-                      ]}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="Normal Reading" fill="#8884d8" />
-                      <Bar dataKey="Speed Reading" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Average Mistake Ratio</CardTitle>
-                  <CardDescription>Normal vs. Speed Reading</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={[
-                        {
-                          name: "Mistake Ratio",
-                          "Normal Reading":
-                            userData
-                              .filter((u) => u.results?.phase1)
-                              .reduce((acc, u) => acc + u.results.phase1.mistakeRatio, 0) /
-                            Math.max(1, userData.filter((u) => u.results?.phase1).length),
-                          "Speed Reading":
-                            userData
-                              .filter((u) => u.results?.phase2)
-                              .reduce((acc, u) => acc + u.results.phase2.mistakeRatio, 0) /
-                            Math.max(1, userData.filter((u) => u.results?.phase2).length),
-                        },
-                      ]}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis label={{ value: "Mistake Ratio", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="Normal Reading" fill="#8884d8" />
-                      <Bar dataKey="Speed Reading" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="techniques" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Speed Reading Technique Comparison</CardTitle>
-                <CardDescription>Comparing effectiveness of different speed reading techniques</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={prepareTestGroupData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="technique" />
-                    <YAxis label={{ value: "Time Improvement (%)", angle: -90, position: "insideLeft" }} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="timeImprovement" name="Reading Speed Improvement (%)" fill="#82ca9d" />
-                    <Bar dataKey="accuracyChange" name="Accuracy Change (%)" fill="#8884d8" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Average Reading Time by Technique</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={prepareTestGroupData()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="technique" />
-                      <YAxis label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="normalReadingTime" name="Normal Reading" fill="#8884d8" />
-                      <Bar dataKey="speedReadingTime" name="Speed Reading" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Average Mistake Ratio by Technique</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={prepareTestGroupData()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="technique" />
-                      <YAxis label={{ value: "Mistake Ratio", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="normalMistakeRatio" name="Normal Reading" fill="#8884d8" />
-                      <Bar dataKey="speedMistakeRatio" name="Speed Reading" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="individual" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Individual Improvement</CardTitle>
-                <CardDescription>Time improvement vs. accuracy change for each participant</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[500px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid />
-                    <XAxis
-                      type="number"
-                      dataKey="timeImprovement"
-                      name="Time Improvement"
-                      label={{ value: "Time Improvement (%)", position: "bottom" }}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="accuracyChange"
-                      name="Accuracy Change"
-                      label={{ value: "Accuracy Change (%)", angle: -90, position: "insideLeft" }}
-                    />
-                    <Tooltip
-                      formatter={(value, name, payload: Payload[]) => [value.toFixed(2) + "%", name]}
-                      labelFormatter={(value, name, payload: Payload[]) =>
-                        `Participant: ${payload[0].payload.nickname}`
-                      }
-                      cursor={{ strokeDasharray: "3 3" }}
-                    />
-                    <Legend />
-                    <Scatter
-                      name="Group 1 (Skimming)"
-                      data={prepareIndividualImprovementData().filter((d) => d.testGroup === 1)}
-                      fill="#8884d8"
-                    />
-                    <Scatter
-                      name="Group 2 (Pointer)"
-                      data={prepareIndividualImprovementData().filter((d) => d.testGroup === 2)}
-                      fill="#82ca9d"
-                    />
-                    <Scatter
-                      name="Group 3 (Subvocalization)"
-                      data={prepareIndividualImprovementData().filter((d) => d.testGroup === 3)}
-                      fill="#ffc658"
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="raw">
-            <Card>
-              <CardHeader>
-                <CardTitle>User Data</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full bg-white border">
-                    <thead>
-                      <tr>
-                        <th className="border px-4 py-2">Nickname</th>
-                        <th className="border px-4 py-2">Test Group</th>
-                        <th className="border px-4 py-2">Technique</th>
-                        <th className="border px-4 py-2">Phase 1 Time</th>
-                        <th className="border px-4 py-2">Phase 1 Score</th>
-                        <th className="border px-4 py-2">Phase 2 Time</th>
-                        <th className="border px-4 py-2">Phase 2 Score</th>
-                        <th className="border px-4 py-2">Time Improvement</th>
-                        <th className="border px-4 py-2">Accuracy Change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userData
-                        .filter((user) => user.results?.phase1 && user.results?.phase2)
-                        .map((user) => {
-                          const phase1 = user.results.phase1
-                          const phase2 = user.results.phase2
-                          const timeImprovement = ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
-                          const accuracyChange =
-                            ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
-
-                          return (
-                            <tr key={user.id}>
-                              <td className="border px-4 py-2">{user.nickname}</td>
-                              <td className="border px-4 py-2">{user.testGroup}</td>
-                              <td className="border px-4 py-2">{user.technique}</td>
-                              <td className="border px-4 py-2">{phase1.readingTime.toFixed(1)}s</td>
-                              <td className="border px-4 py-2">{phase1.score}/10</td>
-                              <td className="border px-4 py-2">{phase2.readingTime.toFixed(1)}s</td>
-                              <td className="border px-4 py-2">{phase2.score}/10</td>
-                              <td className="border px-4 py-2">{timeImprovement.toFixed(1)}%</td>
-                              <td className="border px-4 py-2">{accuracyChange.toFixed(1)}%</td>
-                            </tr>
-                          )
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-gray-500">No results found. Start the study to collect data.</p>
+          <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
+            <Button onClick={fetchData} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+              {loading ? "Wird geladen..." : "Daten aktualisieren"}
+            </Button>
+            <Button onClick={downloadCSV} disabled={userData.length === 0} className="bg-green-600 hover:bg-green-700">
+              CSV herunterladen
+            </Button>
+          </div>
         </div>
-      )}
+
+        {userData.length > 0 ? (
+          <Tabs defaultValue="overview" className="space-y-8">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-blue-100 p-1 rounded-lg">
+              <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-blue-700">
+                Übersicht
+              </TabsTrigger>
+              <TabsTrigger
+                value="techniques"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700"
+              >
+                Technikvergleich
+              </TabsTrigger>
+              <TabsTrigger
+                value="individual"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700"
+              >
+                Einzelergebnisse
+              </TabsTrigger>
+              <TabsTrigger value="raw" className="data-[state=active]:bg-white data-[state=active]:text-blue-700">
+                Rohdaten
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6">
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                  <CardTitle>Lesezeit vs. Fehlerquote</CardTitle>
+                  <CardDescription className="text-blue-100">
+                    Vergleich von normalem Lesen und Schnelllesen bei allen Teilnehmern
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="h-[500px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          type="number"
+                          dataKey="readingTime"
+                          name="Lesezeit"
+                          label={{ value: "Lesezeit (Sekunden)", position: "bottom", offset: 20 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="mistakeRatio"
+                          name="Fehlerquote"
+                          label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
+                        />
+                        <ZAxis range={[60, 60]} />
+                        <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                        <Legend
+                          layout="horizontal"
+                          verticalAlign="top"
+                          align="center"
+                          wrapperStyle={{ paddingBottom: "20px" }}
+                        />
+                        <Scatter
+                          name="Normales Lesen"
+                          data={prepareTimeVsMistakeData().filter((d) => d.type === "Normales Lesen")}
+                          fill="#4f46e5"
+                        />
+                        <Scatter
+                          name="Schnelllesen"
+                          data={prepareTimeVsMistakeData().filter((d) => d.type === "Schnelllesen")}
+                          fill="#10b981"
+                        />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border-0 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                    <CardTitle>Durchschnittliche Lesezeit</CardTitle>
+                    <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={[
+                            {
+                              name: "Lesezeit",
+                              "Normales Lesen":
+                                userData
+                                  .filter((u) => u.results?.phase1)
+                                  .reduce((acc, u) => acc + u.results.phase1.readingTime, 0) /
+                                Math.max(1, userData.filter((u) => u.results?.phase1).length),
+                              Schnelllesen:
+                                userData
+                                  .filter((u) => u.results?.phase2)
+                                  .reduce((acc, u) => acc + u.results.phase2.readingTime, 0) /
+                                Math.max(1, userData.filter((u) => u.results?.phase2).length),
+                            },
+                          ]}
+                          layout="vertical"
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }} />
+                          <YAxis type="category" dataKey="name" width={80} />
+                          <Tooltip formatter={(value) => [`${value.toFixed(1)} s`, ""]} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Bar dataKey="Normales Lesen" fill="#4f46e5" />
+                          <Bar dataKey="Schnelllesen" fill="#10b981" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-0 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                    <CardTitle>Durchschnittliche Fehlerquote</CardTitle>
+                    <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={[
+                            {
+                              name: "Fehlerquote",
+                              "Normales Lesen":
+                                userData
+                                  .filter((u) => u.results?.phase1)
+                                  .reduce((acc, u) => acc + u.results.phase1.mistakeRatio, 0) /
+                                Math.max(1, userData.filter((u) => u.results?.phase1).length),
+                              Schnelllesen:
+                                userData
+                                  .filter((u) => u.results?.phase2)
+                                  .reduce((acc, u) => acc + u.results.phase2.mistakeRatio, 0) /
+                                Math.max(1, userData.filter((u) => u.results?.phase2).length),
+                            },
+                          ]}
+                          layout="vertical"
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" label={{ value: "Fehlerquote", position: "bottom", offset: 0 }} />
+                          <YAxis type="category" dataKey="name" width={80} />
+                          <Tooltip formatter={(value) => [`${(value * 100).toFixed(1)}%`, ""]} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Bar dataKey="Normales Lesen" fill="#4f46e5" />
+                          <Bar dataKey="Schnelllesen" fill="#10b981" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="techniques" className="space-y-6">
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                  <CardTitle>Vergleich der Schnelllesetechniken</CardTitle>
+                  <CardDescription className="text-blue-100">
+                    Vergleich der Wirksamkeit verschiedener Schnelllesetechniken
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={prepareTestGroupData()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="technique"
+                          tick={{ fontSize: 12 }}
+                          height={60}
+                          tickFormatter={(value) => {
+                            // Wrap long technique names
+                            if (value.length > 15) {
+                              return value.substring(0, 15) + "..."
+                            }
+                            return value
+                          }}
+                        />
+                        <YAxis label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }} />
+                        <Tooltip formatter={(value) => [`${value.toFixed(1)}%`, ""]} />
+                        <Legend
+                          layout="horizontal"
+                          verticalAlign="top"
+                          align="center"
+                          wrapperStyle={{ paddingBottom: "20px" }}
+                        />
+                        <Bar dataKey="timeImprovement" name="Lesegeschwindigkeitsverbesserung (%)" fill="#10b981" />
+                        <Bar dataKey="accuracyChange" name="Genauigkeitsänderung (%)" fill="#4f46e5" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border-0 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                    <CardTitle>Durchschnittliche Lesezeit nach Technik</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={prepareTestGroupData()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="technique"
+                            tick={{ fontSize: 12 }}
+                            height={60}
+                            tickFormatter={(value) => {
+                              // Wrap long technique names
+                              if (value.length > 15) {
+                                return value.substring(0, 15) + "..."
+                              }
+                              return value
+                            }}
+                          />
+                          <YAxis label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }} />
+                          <Tooltip formatter={(value) => [`${value.toFixed(1)} s`, ""]} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Bar dataKey="normalReadingTime" name="Normales Lesen" fill="#4f46e5" />
+                          <Bar dataKey="speedReadingTime" name="Schnelllesen" fill="#10b981" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-0 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                    <CardTitle>Durchschnittliche Fehlerquote nach Technik</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={prepareTestGroupData()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="technique"
+                            tick={{ fontSize: 12 }}
+                            height={60}
+                            tickFormatter={(value) => {
+                              // Wrap long technique names
+                              if (value.length > 15) {
+                                return value.substring(0, 15) + "..."
+                              }
+                              return value
+                            }}
+                          />
+                          <YAxis label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }} />
+                          <Tooltip formatter={(value) => [`${(value * 100).toFixed(1)}%`, ""]} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Bar dataKey="normalMistakeRatio" name="Normales Lesen" fill="#4f46e5" />
+                          <Bar dataKey="speedMistakeRatio" name="Schnelllesen" fill="#10b981" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="individual" className="space-y-6">
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                  <CardTitle>Individuelle Verbesserung</CardTitle>
+                  <CardDescription className="text-blue-100">
+                    Zeitverbesserung vs. Genauigkeitsänderung für jeden Teilnehmer
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="h-[500px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
+                        <CartesianGrid />
+                        <XAxis
+                          type="number"
+                          dataKey="timeImprovement"
+                          name="Zeitverbesserung"
+                          label={{ value: "Zeitverbesserung (%)", position: "bottom", offset: 20 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="accuracyChange"
+                          name="Genauigkeitsänderung"
+                          label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
+                        />
+                        <Tooltip
+                          formatter={(value, name, payload: Payload[]) => [value.toFixed(2) + "%", name]}
+                          labelFormatter={(value, name, payload: Payload[]) =>
+                            `Teilnehmer: ${payload[0].payload.nickname}`
+                          }
+                          cursor={{ strokeDasharray: "3 3" }}
+                        />
+                        <Legend
+                          layout="horizontal"
+                          verticalAlign="top"
+                          align="center"
+                          wrapperStyle={{ paddingBottom: "20px" }}
+                        />
+                        <Scatter
+                          name="Gruppe 1 (Skimming)"
+                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 1)}
+                          fill="#4f46e5"
+                        />
+                        <Scatter
+                          name="Gruppe 2 (Zeiger)"
+                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 2)}
+                          fill="#10b981"
+                        />
+                        <Scatter
+                          name="Gruppe 3 (Subvokalisierung)"
+                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 3)}
+                          fill="#f59e0b"
+                        />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="raw">
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                  <CardTitle>Benutzerdaten</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-blue-50">
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Spitzname</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Testgruppe</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Technik</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 1 Zeit</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 1 Punkte</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 2 Zeit</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 2 Punkte</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Zeitverbesserung</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">
+                            Genauigkeitsänderung
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {userData
+                          .filter((user) => user.results?.phase1 && user.results?.phase2)
+                          .map((user) => {
+                            const phase1 = user.results.phase1
+                            const phase2 = user.results.phase2
+                            const timeImprovement =
+                              ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
+                            const accuracyChange =
+                              ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
+
+                            return (
+                              <tr key={user.id} className="hover:bg-blue-50">
+                                <td className="px-4 py-3 text-sm">{user.nickname}</td>
+                                <td className="px-4 py-3 text-sm">{user.testGroup}</td>
+                                <td className="px-4 py-3 text-sm">{user.technique}</td>
+                                <td className="px-4 py-3 text-sm">{phase1.readingTime.toFixed(1)}s</td>
+                                <td className="px-4 py-3 text-sm">{phase1.score}/10</td>
+                                <td className="px-4 py-3 text-sm">{phase2.readingTime.toFixed(1)}s</td>
+                                <td className="px-4 py-3 text-sm">{phase2.score}/10</td>
+                                <td className="px-4 py-3 text-sm font-medium text-green-600">
+                                  {timeImprovement.toFixed(1)}%
+                                </td>
+                                <td className="px-4 py-3 text-sm font-medium text-blue-600">
+                                  {accuracyChange.toFixed(1)}%
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+            <p className="text-gray-500 text-lg">
+              Keine Ergebnisse gefunden. Starten Sie die Studie, um Daten zu sammeln.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
