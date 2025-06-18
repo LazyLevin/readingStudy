@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { collection, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth"
+import { db, auth } from "@/lib/firebase"
 import {
   BarChart,
   Bar,
@@ -21,6 +23,7 @@ import {
   ZAxis,
 } from "recharts"
 import type { Payload } from "recharts/types/component/Tooltip"
+import { LogOut } from "lucide-react"
 
 type Result = {
   id: string
@@ -57,21 +60,54 @@ type UserData = {
 }
 
 export default function AdminDashboard() {
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [authenticated, setAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
   const [results, setResults] = useState<Result[]>([])
   const [userData, setUserData] = useState<UserData[]>([])
   const [loading, setLoading] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [loginError, setLoginError] = useState("")
 
-  // Simple password protection - in a real app, use proper authentication
-  const adminPassword = "studyadmin123" // Change this to your desired password
+  // Check authentication state on component mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthenticated(true)
+        setUser(user)
+        fetchData()
+      } else {
+        setAuthenticated(false)
+        setUser(null)
+      }
+      setAuthLoading(false)
+    })
 
-  const authenticate = () => {
-    if (password === adminPassword) {
-      setAuthenticated(true)
-      fetchData()
-    } else {
-      alert("Falsches Passwort")
+    return () => unsubscribe()
+  }, [])
+
+  const handleLogin = async () => {
+    setLoginError("")
+    setAuthLoading(true)
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password)
+      // Authentication state will be handled by onAuthStateChanged
+    } catch (error: any) {
+      console.error("Login error:", error)
+      setLoginError("Ungültige Anmeldedaten. Bitte versuchen Sie es erneut.")
+      setAuthLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      setResults([])
+      setUserData([])
+    } catch (error) {
+      console.error("Logout error:", error)
     }
   }
 
@@ -84,11 +120,11 @@ export default function AdminDashboard() {
       resultsSnapshot.forEach((doc) => {
         resultsData.push({ id: doc.id, ...doc.data() } as Result)
       })
-      setResults(resultsData)
 
       // Fetch user data with their results
       const usersSnapshot = await getDocs(collection(db, "users"))
       const usersData: UserData[] = []
+      const additionalResults: Result[] = []
 
       for (const userDoc of usersSnapshot.docs) {
         const userData = { id: userDoc.id, ...userDoc.data() } as UserData
@@ -105,19 +141,53 @@ export default function AdminDashboard() {
               score: resultData.score,
               mistakeRatio: resultData.mistakeRatio,
             }
+            // Add to results array for chart compatibility
+            additionalResults.push({
+              id: `${userDoc.id}_phase1`,
+              sessionId: userDoc.id,
+              nickname: userData.nickname,
+              phase: 1,
+              readingTime: resultData.readingTime,
+              score: resultData.score,
+              totalQuestions: resultData.totalQuestions || 10,
+              timestamp: resultData.timestamp,
+              testGroup: userData.testGroup,
+              mistakeRatio: resultData.mistakeRatio,
+              technique: resultData.technique || "Normales Lesen",
+            })
           } else if (resultDoc.id === "phase2") {
             userData.results.phase2 = {
               readingTime: resultData.readingTime,
               score: resultData.score,
               mistakeRatio: resultData.mistakeRatio,
             }
+            // Add to results array for chart compatibility
+            additionalResults.push({
+              id: `${userDoc.id}_phase2`,
+              sessionId: userDoc.id,
+              nickname: userData.nickname,
+              phase: 2,
+              readingTime: resultData.readingTime,
+              score: resultData.score,
+              totalQuestions: resultData.totalQuestions || 10,
+              timestamp: resultData.timestamp,
+              testGroup: userData.testGroup,
+              mistakeRatio: resultData.mistakeRatio,
+              technique: resultData.technique || userData.technique,
+            })
           }
         })
 
         usersData.push(userData)
       }
 
+      // Combine both result sources
+      const allResults = [...resultsData, ...additionalResults]
+      setResults(allResults)
       setUserData(usersData)
+
+      console.log("Fetched results:", allResults.length)
+      console.log("Fetched users:", usersData.length)
     } catch (error) {
       console.error("Error fetching data:", error)
     }
@@ -181,6 +251,8 @@ export default function AdminDashboard() {
 
   // Prepare data for time vs mistake ratio chart
   const prepareTimeVsMistakeData = () => {
+    if (!results || results.length === 0) return []
+
     const normalReadingData = results
       .filter((r) => r.phase === 1)
       .map((r) => ({
@@ -202,6 +274,8 @@ export default function AdminDashboard() {
 
   // Prepare data for test group comparison
   const prepareTestGroupData = () => {
+    if (!userData || userData.length === 0) return []
+
     const groupData = {}
 
     // Initialize with empty arrays
@@ -249,11 +323,13 @@ export default function AdminDashboard() {
       }
     })
 
-    return Object.values(groupData)
+    return Object.values(groupData).filter((d) => d.count > 0)
   }
 
   // Prepare data for individual improvement
   const prepareIndividualImprovementData = () => {
+    if (!userData || userData.length === 0) return []
+
     return userData
       .filter((user) => user.results?.phase1 && user.results?.phase2)
       .map((user) => {
@@ -276,26 +352,59 @@ export default function AdminDashboard() {
       })
   }
 
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-800 text-lg">Authentifizierung wird überprüft...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!authenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <Card className="w-full max-w-md shadow-lg border-0">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
             <CardTitle className="text-center text-2xl">Admin Dashboard</CardTitle>
+            <CardDescription className="text-blue-100 text-center">
+              Melden Sie sich mit Ihren Admin-Anmeldedaten an
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-6">
             <div className="space-y-2">
+              <Label htmlFor="email">E-Mail</Label>
               <Input
-                type="password"
-                placeholder="Admin-Passwort eingeben"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && authenticate()}
+                id="email"
+                type="email"
+                placeholder="admin@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="border-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <Button onClick={authenticate} className="w-full bg-blue-600 hover:bg-blue-700">
-              Anmelden
+            <div className="space-y-2">
+              <Label htmlFor="password">Passwort</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Passwort eingeben"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                className="border-2 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {loginError && <div className="text-red-600 text-sm text-center bg-red-50 p-2 rounded">{loginError}</div>}
+            <Button
+              onClick={handleLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              disabled={authLoading || !email || !password}
+            >
+              {authLoading ? "Wird angemeldet..." : "Anmelden"}
             </Button>
           </CardContent>
         </Card>
@@ -307,8 +416,19 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="container mx-auto py-8 px-4 max-w-7xl">
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h1 className="text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
-          <p className="text-gray-600 mb-6">Administrationsbereich für die Analyse der Studienergebnisse</p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h1 className="text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
+              <p className="text-gray-600 mb-6">Administrationsbereich für die Analyse der Studienergebnisse</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-600">Angemeldet als: {user?.email}</span>
+              <Button onClick={handleLogout} variant="outline" size="sm" className="flex items-center gap-2">
+                <LogOut className="h-4 w-4" />
+                Abmelden
+              </Button>
+            </div>
+          </div>
 
           <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
             <Button onClick={fetchData} disabled={loading} className="bg-blue-600 hover:bg-blue-700">

@@ -493,7 +493,7 @@ export default function ReadingStudyApp() {
         <div className="text-center space-y-4 py-4">
           <p className="text-xl">Bitte lesen Sie den Text und beantworten Sie die danach gestellten Fragen.</p>
           <p className="text-gray-600">
-             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Beantworten Sie bitte nach dem Lesen einige Multiple-Choice-Fragen zum Inhalt.
+             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige Fragen zum Inhalt des Textes.
           </p>
         </div>
         <Button onClick={() => setStep(2)} className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700" size="lg">
@@ -551,7 +551,7 @@ export default function ReadingStudyApp() {
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
         <CardTitle className="text-2xl">Verständnisfragen</CardTitle>
         <CardDescription className="text-blue-100">
-          Beantworten Sie die folgenden Fragen zum gelesenen Text
+          Bitte beantworten Sie die folgenden Fragen zum Inhalt des Textes.
         </CardDescription>
         <Progress
           value={(currentAnswers.filter((a) => a).length / passages[currentPhase].questions.length) * 100}
@@ -600,7 +600,7 @@ export default function ReadingStudyApp() {
             Schnelllesetechnik
           </CardTitle>
           <CardDescription className="text-blue-100">
-            Lernen Sie diese Technik, um Ihre Lesegeschwindigkeit zu verbessern
+            Versuchen Sie diese Technik, um Ihre Lesegeschwindigkeit zu verbessern.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 p-6">
@@ -610,8 +610,7 @@ export default function ReadingStudyApp() {
           </div>
           <div className="text-center pt-4">
             <p className="text-gray-600 mb-6">
-              Lassen Sie uns nun den zweiten Lesetext versuchen. Wenden Sie diese Technik an, um zu sehen, ob sie Ihre
-              Lesegeschwindigkeit verbessert!
+              Bitte wenden Sie nun beim zweiten Lesetext diese Technik an und beantworten Sie anschließend die Fragen zum Inhalt des Textes.
             </p>
             <Button onClick={startNextPhase} size="lg" className="h-12 text-base bg-blue-600 hover:bg-blue-700">
               Weiter zu Phase 2
@@ -627,7 +626,7 @@ export default function ReadingStudyApp() {
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
         <CardTitle className="text-2xl text-center">Studie abgeschlossen!</CardTitle>
         <CardDescription className="text-blue-100 text-center">
-          Vielen Dank für Ihre Teilnahme an unserer Lesestudie
+          Vielen Dank für Ihre Teilnahme.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 p-6">
