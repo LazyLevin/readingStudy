@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,7 +25,9 @@ import {
   ZAxis,
 } from "recharts"
 import type { Payload } from "recharts/types/component/Tooltip"
-import { LogOut } from "lucide-react"
+import { LogOut, Download, FileImage, FileText } from "lucide-react"
+import html2canvas from "html2canvas"
+import jsPDF from "jspdf"
 
 type Result = {
   id: string
@@ -69,6 +73,16 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [loginError, setLoginError] = useState("")
+  const [exportingCharts, setExportingCharts] = useState(false)
+
+  // Refs for chart containers
+  const scatterChartRef = useRef<HTMLDivElement>(null)
+  const avgTimeChartRef = useRef<HTMLDivElement>(null)
+  const avgErrorChartRef = useRef<HTMLDivElement>(null)
+  const techniqueComparisonRef = useRef<HTMLDivElement>(null)
+  const timeByTechniqueRef = useRef<HTMLDivElement>(null)
+  const errorByTechniqueRef = useRef<HTMLDivElement>(null)
+  const individualImprovementRef = useRef<HTMLDivElement>(null)
 
   // Check authentication state on component mount
   useEffect(() => {
@@ -153,7 +167,7 @@ export default function AdminDashboard() {
               timestamp: resultData.timestamp,
               testGroup: userData.testGroup,
               mistakeRatio: resultData.mistakeRatio,
-              technique: resultData.technique || "Normales Lesen",
+              technique: "Normales Lesen",
             })
           } else if (resultDoc.id === "phase2") {
             userData.results.phase2 = {
@@ -173,7 +187,7 @@ export default function AdminDashboard() {
               timestamp: resultData.timestamp,
               testGroup: userData.testGroup,
               mistakeRatio: resultData.mistakeRatio,
-              technique: resultData.technique || userData.technique,
+              technique: userData.technique,
             })
           }
         })
@@ -188,6 +202,8 @@ export default function AdminDashboard() {
 
       console.log("Fetched results:", allResults.length)
       console.log("Fetched users:", usersData.length)
+      console.log("Sample userData:", usersData.slice(0, 2))
+      console.log("Sample results:", allResults.slice(0, 2))
     } catch (error) {
       console.error("Error fetching data:", error)
     }
@@ -249,23 +265,146 @@ export default function AdminDashboard() {
     document.body.removeChild(a)
   }
 
+  const exportChartAsImage = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
+    if (!chartRef.current) return
+
+    try {
+      // Wait a bit for the chart to fully render
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      const canvas = await html2canvas(chartRef.current, {
+        scale: 3, // High resolution for scientific papers
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: chartRef.current.offsetWidth,
+        height: chartRef.current.offsetHeight,
+      })
+
+      // Download as PNG
+      const link = document.createElement("a")
+      link.download = `${filename}.png`
+      link.href = canvas.toDataURL("image/png")
+      link.click()
+    } catch (error) {
+      console.error("Error exporting chart:", error)
+    }
+  }
+
+  const exportChartAsSVG = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
+    if (!chartRef.current) return
+
+    try {
+      // Find the SVG element within the chart
+      const svgElement = chartRef.current.querySelector("svg")
+      if (!svgElement) {
+        console.error("No SVG found in chart")
+        return
+      }
+
+      // Clone the SVG to avoid modifying the original
+      const clonedSvg = svgElement.cloneNode(true) as SVGElement
+
+      // Set explicit dimensions and background
+      clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+      clonedSvg.style.backgroundColor = "#ffffff"
+
+      // Serialize the SVG
+      const serializer = new XMLSerializer()
+      const svgString = serializer.serializeToString(clonedSvg)
+
+      // Create blob and download
+      const blob = new Blob([svgString], { type: "image/svg+xml" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.download = `${filename}.svg`
+      link.href = url
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error exporting SVG:", error)
+    }
+  }
+
+  const exportAllChartsAsPDF = async () => {
+    setExportingCharts(true)
+
+    try {
+      const pdf = new jsPDF("l", "mm", "a4") // Landscape orientation for better chart visibility
+      const chartRefs = [
+        { ref: scatterChartRef, title: "Lesezeit vs. Fehlerquote" },
+        { ref: avgTimeChartRef, title: "Durchschnittliche Lesezeit" },
+        { ref: avgErrorChartRef, title: "Durchschnittliche Fehlerquote" },
+        { ref: techniqueComparisonRef, title: "Vergleich der Schnelllesetechniken" },
+        { ref: timeByTechniqueRef, title: "Lesezeit nach Technik" },
+        { ref: errorByTechniqueRef, title: "Fehlerquote nach Technik" },
+        { ref: individualImprovementRef, title: "Individuelle Verbesserung" },
+      ]
+
+      for (let i = 0; i < chartRefs.length; i++) {
+        const { ref, title } = chartRefs[i]
+
+        if (ref.current) {
+          // Wait for chart to render
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          const canvas = await html2canvas(ref.current, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          })
+
+          const imgData = canvas.toDataURL("image/png")
+
+          if (i > 0) {
+            pdf.addPage()
+          }
+
+          // Add title
+          pdf.setFontSize(16)
+          pdf.text(title, 20, 20)
+
+          // Calculate dimensions to fit the page
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          const pageHeight = pdf.internal.pageSize.getHeight()
+          const imgWidth = pageWidth - 40 // 20mm margin on each side
+          const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+          // Add image
+          pdf.addImage(imgData, "PNG", 20, 30, imgWidth, Math.min(imgHeight, pageHeight - 50))
+        }
+      }
+
+      pdf.save("lesestudie_diagramme.pdf")
+    } catch (error) {
+      console.error("Error creating PDF:", error)
+    } finally {
+      setExportingCharts(false)
+    }
+  }
+
   // Prepare data for time vs mistake ratio chart
   const prepareTimeVsMistakeData = () => {
-    if (!results || results.length === 0) return []
+    if (!results || results.length === 0) {
+      return []
+    }
 
     const normalReadingData = results
       .filter((r) => r.phase === 1)
       .map((r) => ({
-        readingTime: r.readingTime,
-        mistakeRatio: r.mistakeRatio || (r.totalQuestions - r.score) / r.totalQuestions,
+        readingTime: Number(r.readingTime) || 0,
+        mistakeRatio: Number(r.mistakeRatio) || 0,
         type: "Normales Lesen",
       }))
 
     const speedReadingData = results
       .filter((r) => r.phase === 2)
       .map((r) => ({
-        readingTime: r.readingTime,
-        mistakeRatio: r.mistakeRatio || (r.totalQuestions - r.score) / r.totalQuestions,
+        readingTime: Number(r.readingTime) || 0,
+        mistakeRatio: Number(r.mistakeRatio) || 0,
         type: "Schnelllesen",
       }))
 
@@ -274,7 +413,15 @@ export default function AdminDashboard() {
 
   // Prepare data for test group comparison
   const prepareTestGroupData = () => {
-    if (!userData || userData.length === 0) return []
+    if (!userData || userData.length === 0) {
+      return []
+    }
+
+    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+
+    if (validUsers.length === 0) {
+      return []
+    }
 
     const groupData = {}
 
@@ -294,21 +441,19 @@ export default function AdminDashboard() {
     }
 
     // Process user data
-    userData
-      .filter((user) => user.results?.phase1 && user.results?.phase2)
-      .forEach((user) => {
-        const group = user.testGroup
-        if (!groupData[group]) return
+    validUsers.forEach((user) => {
+      const group = Number(user.testGroup)
+      if (!groupData[group]) return
 
-        const phase1 = user.results.phase1
-        const phase2 = user.results.phase2
+      const phase1 = user.results.phase1
+      const phase2 = user.results.phase2
 
-        groupData[group].normalReadingTime += phase1.readingTime
-        groupData[group].speedReadingTime += phase2.readingTime
-        groupData[group].normalMistakeRatio += phase1.mistakeRatio
-        groupData[group].speedMistakeRatio += phase2.mistakeRatio
-        groupData[group].count++
-      })
+      groupData[group].normalReadingTime += Number(phase1.readingTime) || 0
+      groupData[group].speedReadingTime += Number(phase2.readingTime) || 0
+      groupData[group].normalMistakeRatio += Number(phase1.mistakeRatio) || 0
+      groupData[group].speedMistakeRatio += Number(phase2.mistakeRatio) || 0
+      groupData[group].count++
+    })
 
     // Calculate averages and improvements
     Object.keys(groupData).forEach((group) => {
@@ -328,28 +473,85 @@ export default function AdminDashboard() {
 
   // Prepare data for individual improvement
   const prepareIndividualImprovementData = () => {
-    if (!userData || userData.length === 0) return []
+    if (!userData || userData.length === 0) {
+      return []
+    }
 
-    return userData
-      .filter((user) => user.results?.phase1 && user.results?.phase2)
-      .map((user) => {
-        const phase1 = user.results.phase1
-        const phase2 = user.results.phase2
-        const timeImprovement = ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
-        const accuracyChange = ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
+    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
 
-        return {
-          nickname: user.nickname,
-          testGroup: user.testGroup,
-          technique: user.technique,
-          normalTime: phase1.readingTime,
-          speedTime: phase2.readingTime,
-          normalMistakes: phase1.mistakeRatio,
-          speedMistakes: phase2.mistakeRatio,
-          timeImprovement,
-          accuracyChange,
-        }
-      })
+    return validUsers.map((user) => {
+      const phase1 = user.results.phase1
+      const phase2 = user.results.phase2
+      const timeImprovement =
+        ((Number(phase1.readingTime) - Number(phase2.readingTime)) / Number(phase1.readingTime)) * 100
+
+      // Handle division by zero for accuracy change
+      let accuracyChange = 0
+      if (Number(phase1.mistakeRatio) !== 0) {
+        accuracyChange =
+          ((Number(phase1.mistakeRatio) - Number(phase2.mistakeRatio)) / Number(phase1.mistakeRatio)) * 100
+      }
+
+      return {
+        nickname: user.nickname,
+        testGroup: Number(user.testGroup),
+        technique: user.technique,
+        normalTime: Number(phase1.readingTime),
+        speedTime: Number(phase2.readingTime),
+        normalMistakes: Number(phase1.mistakeRatio),
+        speedMistakes: Number(phase2.mistakeRatio),
+        timeImprovement: isFinite(timeImprovement) ? timeImprovement : 0,
+        accuracyChange: isFinite(accuracyChange) ? accuracyChange : 0,
+      }
+    })
+  }
+
+  // Prepare average time data
+  const prepareAverageTimeData = () => {
+    if (!userData || userData.length === 0) {
+      return []
+    }
+
+    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+
+    if (validUsers.length === 0) {
+      return []
+    }
+
+    const avgNormalTime = validUsers.reduce((acc, u) => acc + u.results.phase1.readingTime, 0) / validUsers.length
+    const avgSpeedTime = validUsers.reduce((acc, u) => acc + u.results.phase2.readingTime, 0) / validUsers.length
+
+    return [
+      {
+        name: "Lesezeit",
+        "Normales Lesen": avgNormalTime,
+        Schnelllesen: avgSpeedTime,
+      },
+    ]
+  }
+
+  // Prepare average error data
+  const prepareAverageErrorData = () => {
+    if (!userData || userData.length === 0) {
+      return []
+    }
+
+    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+
+    if (validUsers.length === 0) {
+      return []
+    }
+
+    const avgNormalError = validUsers.reduce((acc, u) => acc + u.results.phase1.mistakeRatio, 0) / validUsers.length
+    const avgSpeedError = validUsers.reduce((acc, u) => acc + u.results.phase2.mistakeRatio, 0) / validUsers.length
+
+    return [
+      {
+        name: "Fehlerquote",
+        "Normales Lesen": avgNormalError,
+        Schnelllesen: avgSpeedError,
+      },
+    ]
   }
 
   // Show loading spinner while checking authentication
@@ -412,6 +614,21 @@ export default function AdminDashboard() {
     )
   }
 
+  // Get the prepared data
+  const timeVsMistakeData = prepareTimeVsMistakeData()
+  const testGroupData = prepareTestGroupData()
+  const individualData = prepareIndividualImprovementData()
+  const avgTimeData = prepareAverageTimeData()
+  const avgErrorData = prepareAverageErrorData()
+
+  console.log("Chart data prepared:", {
+    timeVsMistakeData: timeVsMistakeData.length,
+    testGroupData: testGroupData.length,
+    individualData: individualData.length,
+    avgTimeData: avgTimeData.length,
+    avgErrorData: avgErrorData.length,
+  })
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="container mx-auto py-8 px-4 max-w-7xl">
@@ -431,15 +648,31 @@ export default function AdminDashboard() {
           </div>
 
           <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
-            <Button onClick={fetchData} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-              {loading ? "Wird geladen..." : "Daten aktualisieren"}
-            </Button>
-            <Button onClick={downloadCSV} disabled={userData.length === 0} className="bg-green-600 hover:bg-green-700">
-              CSV herunterladen
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={fetchData} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+                {loading ? "Wird geladen..." : "Daten aktualisieren"}
+              </Button>
+              <Button
+                onClick={downloadCSV}
+                disabled={userData.length === 0}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                CSV herunterladen
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={exportAllChartsAsPDF}
+                disabled={userData.length === 0 || exportingCharts}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                {exportingCharts ? "Exportiere..." : "Alle Diagramme als PDF"}
+              </Button>
+            </div>
           </div>
         </div>
-
         {userData.length > 0 ? (
           <Tabs defaultValue="overview" className="space-y-8">
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-blue-100 p-1 rounded-lg">
@@ -466,13 +699,37 @@ export default function AdminDashboard() {
             <TabsContent value="overview" className="space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <CardTitle>Lesezeit vs. Fehlerquote</CardTitle>
-                  <CardDescription className="text-blue-100">
-                    Vergleich von normalem Lesen und Schnelllesen bei allen Teilnehmern
-                  </CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Lesezeit vs. Fehlerquote</CardTitle>
+                      <CardDescription className="text-blue-100">
+                        Vergleich von normalem Lesen und Schnelllesen bei allen Teilnehmern
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsImage(scatterChartRef, "lesezeit_vs_fehlerquote")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        PNG
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsSVG(scatterChartRef, "lesezeit_vs_fehlerquote")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        SVG
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="h-[500px]">
+                  <div ref={scatterChartRef} className="h-[500px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -498,12 +755,12 @@ export default function AdminDashboard() {
                         />
                         <Scatter
                           name="Normales Lesen"
-                          data={prepareTimeVsMistakeData().filter((d) => d.type === "Normales Lesen")}
+                          data={timeVsMistakeData.filter((d) => d.type === "Normales Lesen")}
                           fill="#4f46e5"
                         />
                         <Scatter
                           name="Schnelllesen"
-                          data={prepareTimeVsMistakeData().filter((d) => d.type === "Schnelllesen")}
+                          data={timeVsMistakeData.filter((d) => d.type === "Schnelllesen")}
                           fill="#10b981"
                         />
                       </ScatterChart>
@@ -515,34 +772,41 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <CardTitle>Durchschnittliche Lesezeit</CardTitle>
-                    <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle>Durchschnittliche Lesezeit</CardTitle>
+                        <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsImage(avgTimeChartRef, "durchschnittliche_lesezeit")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          PNG
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsSVG(avgTimeChartRef, "durchschnittliche_lesezeit")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          SVG
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="h-[300px]">
+                    <div ref={avgTimeChartRef} className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={[
-                            {
-                              name: "Lesezeit",
-                              "Normales Lesen":
-                                userData
-                                  .filter((u) => u.results?.phase1)
-                                  .reduce((acc, u) => acc + u.results.phase1.readingTime, 0) /
-                                Math.max(1, userData.filter((u) => u.results?.phase1).length),
-                              Schnelllesen:
-                                userData
-                                  .filter((u) => u.results?.phase2)
-                                  .reduce((acc, u) => acc + u.results.phase2.readingTime, 0) /
-                                Math.max(1, userData.filter((u) => u.results?.phase2).length),
-                            },
-                          ]}
-                          layout="vertical"
-                        >
+                        <BarChart data={avgTimeData} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis type="number" label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }} />
                           <YAxis type="category" dataKey="name" width={80} />
-                          <Tooltip formatter={(value) => [`${value.toFixed(1)} s`, ""]} />
+                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
                           <Legend
                             layout="horizontal"
                             verticalAlign="top"
@@ -559,34 +823,41 @@ export default function AdminDashboard() {
 
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <CardTitle>Durchschnittliche Fehlerquote</CardTitle>
-                    <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle>Durchschnittliche Fehlerquote</CardTitle>
+                        <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsImage(avgErrorChartRef, "durchschnittliche_fehlerquote")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          PNG
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsSVG(avgErrorChartRef, "durchschnittliche_fehlerquote")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          SVG
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="h-[300px]">
+                    <div ref={avgErrorChartRef} className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={[
-                            {
-                              name: "Fehlerquote",
-                              "Normales Lesen":
-                                userData
-                                  .filter((u) => u.results?.phase1)
-                                  .reduce((acc, u) => acc + u.results.phase1.mistakeRatio, 0) /
-                                Math.max(1, userData.filter((u) => u.results?.phase1).length),
-                              Schnelllesen:
-                                userData
-                                  .filter((u) => u.results?.phase2)
-                                  .reduce((acc, u) => acc + u.results.phase2.mistakeRatio, 0) /
-                                Math.max(1, userData.filter((u) => u.results?.phase2).length),
-                            },
-                          ]}
-                          layout="vertical"
-                        >
+                        <BarChart data={avgErrorData} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis type="number" label={{ value: "Fehlerquote", position: "bottom", offset: 0 }} />
                           <YAxis type="category" dataKey="name" width={80} />
-                          <Tooltip formatter={(value) => [`${(value * 100).toFixed(1)}%`, ""]} />
+                          <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
                           <Legend
                             layout="horizontal"
                             verticalAlign="top"
@@ -606,15 +877,39 @@ export default function AdminDashboard() {
             <TabsContent value="techniques" className="space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <CardTitle>Vergleich der Schnelllesetechniken</CardTitle>
-                  <CardDescription className="text-blue-100">
-                    Vergleich der Wirksamkeit verschiedener Schnelllesetechniken
-                  </CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Vergleich der Schnelllesetechniken</CardTitle>
+                      <CardDescription className="text-blue-100">
+                        Vergleich der Wirksamkeit verschiedener Schnelllesetechniken
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsImage(techniqueComparisonRef, "technikvergleich")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        PNG
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsSVG(techniqueComparisonRef, "technikvergleich")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        SVG
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="h-[400px]">
+                  <div ref={techniqueComparisonRef} className="h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={prepareTestGroupData()}>
+                      <BarChart data={testGroupData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           dataKey="technique"
@@ -629,7 +924,7 @@ export default function AdminDashboard() {
                           }}
                         />
                         <YAxis label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }} />
-                        <Tooltip formatter={(value) => [`${value.toFixed(1)}%`, ""]} />
+                        <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, ""]} />
                         <Legend
                           layout="horizontal"
                           verticalAlign="top"
@@ -647,12 +942,36 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <CardTitle>Durchschnittliche Lesezeit nach Technik</CardTitle>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle>Durchschnittliche Lesezeit nach Technik</CardTitle>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsImage(timeByTechniqueRef, "lesezeit_nach_technik")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          PNG
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsSVG(timeByTechniqueRef, "lesezeit_nach_technik")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          SVG
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="h-[300px]">
+                    <div ref={timeByTechniqueRef} className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={prepareTestGroupData()}>
+                        <BarChart data={testGroupData}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis
                             dataKey="technique"
@@ -667,7 +986,7 @@ export default function AdminDashboard() {
                             }}
                           />
                           <YAxis label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }} />
-                          <Tooltip formatter={(value) => [`${value.toFixed(1)} s`, ""]} />
+                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
                           <Legend
                             layout="horizontal"
                             verticalAlign="top"
@@ -684,12 +1003,36 @@ export default function AdminDashboard() {
 
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <CardTitle>Durchschnittliche Fehlerquote nach Technik</CardTitle>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle>Durchschnittliche Fehlerquote nach Technik</CardTitle>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsImage(errorByTechniqueRef, "fehlerquote_nach_technik")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          PNG
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          onClick={() => exportChartAsSVG(errorByTechniqueRef, "fehlerquote_nach_technik")}
+                        >
+                          <FileImage className="h-4 w-4 mr-1" />
+                          SVG
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="h-[300px]">
+                    <div ref={errorByTechniqueRef} className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={prepareTestGroupData()}>
+                        <BarChart data={testGroupData}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis
                             dataKey="technique"
@@ -704,7 +1047,7 @@ export default function AdminDashboard() {
                             }}
                           />
                           <YAxis label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }} />
-                          <Tooltip formatter={(value) => [`${(value * 100).toFixed(1)}%`, ""]} />
+                          <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
                           <Legend
                             layout="horizontal"
                             verticalAlign="top"
@@ -724,13 +1067,37 @@ export default function AdminDashboard() {
             <TabsContent value="individual" className="space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <CardTitle>Individuelle Verbesserung</CardTitle>
-                  <CardDescription className="text-blue-100">
-                    Zeitverbesserung vs. Genauigkeitsänderung für jeden Teilnehmer
-                  </CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Individuelle Verbesserung</CardTitle>
+                      <CardDescription className="text-blue-100">
+                        Zeitverbesserung vs. Genauigkeitsänderung für jeden Teilnehmer
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsImage(individualImprovementRef, "individuelle_verbesserung")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        PNG
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        onClick={() => exportChartAsSVG(individualImprovementRef, "individuelle_verbesserung")}
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        SVG
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="h-[500px]">
+                  <div ref={individualImprovementRef} className="h-[500px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
                         <CartesianGrid />
@@ -747,9 +1114,9 @@ export default function AdminDashboard() {
                           label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
                         />
                         <Tooltip
-                          formatter={(value, name, payload: Payload[]) => [value.toFixed(2) + "%", name]}
+                          formatter={(value, name, payload: Payload[]) => [Number(value).toFixed(2) + "%", name]}
                           labelFormatter={(value, name, payload: Payload[]) =>
-                            `Teilnehmer: ${payload[0].payload.nickname}`
+                            `Teilnehmer: ${payload[0]?.payload?.nickname || "Unknown"}`
                           }
                           cursor={{ strokeDasharray: "3 3" }}
                         />
@@ -761,17 +1128,17 @@ export default function AdminDashboard() {
                         />
                         <Scatter
                           name="Gruppe 1 (Skimming)"
-                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 1)}
+                          data={individualData.filter((d) => d.testGroup === 1)}
                           fill="#4f46e5"
                         />
                         <Scatter
                           name="Gruppe 2 (Zeiger)"
-                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 2)}
+                          data={individualData.filter((d) => d.testGroup === 2)}
                           fill="#10b981"
                         />
                         <Scatter
                           name="Gruppe 3 (Subvokalisierung)"
-                          data={prepareIndividualImprovementData().filter((d) => d.testGroup === 3)}
+                          data={individualData.filter((d) => d.testGroup === 3)}
                           fill="#f59e0b"
                         />
                       </ScatterChart>

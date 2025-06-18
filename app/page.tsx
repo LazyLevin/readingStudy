@@ -327,7 +327,7 @@ export default function ReadingStudyApp() {
   }, [])
 
   const steps = [
-    "Spitzname eingeben",
+    "Namen eingeben",
     "Anleitung",
     "Lesephase 1",
     "Fragen Phase 1",
