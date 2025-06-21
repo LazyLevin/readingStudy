@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,7 +26,8 @@ import {
 } from "recharts"
 import type { Payload } from "recharts/types/component/Tooltip"
 import { LogOut, Download, FileImage, FileText } from "lucide-react"
-import { downloadCSV, exportAllChartsAsPDF, exportChartAsImage, exportChartAsSVG } from "@/lib/exportUtils"
+import html2canvas from "html2canvas"
+import jsPDF from "jspdf"
 
 type Result = {
   id: string
@@ -215,6 +218,182 @@ export default function AdminDashboard() {
     setLoading(false)
   }
 
+  const downloadCSV = () => {
+    // Create CSV content
+    const headers = [
+      "Spitzname",
+      "Testgruppe",
+      "Technik",
+      "Phase 1 Lesezeit (s)",
+      "Phase 1 Punkte",
+      "Phase 1 Fehlerquote",
+      "Phase 2 Lesezeit (s)",
+      "Phase 2 Punkte",
+      "Phase 2 Fehlerquote",
+      "Zeitverbesserung (%)",
+      "Genauigkeitsänderung (%)",
+    ]
+    const csvRows = [headers]
+
+    userData
+      .filter((user) => user.results?.phase1 && user.results?.phase2)
+      .forEach((user) => {
+        const phase1 = user.results.phase1
+        const phase2 = user.results.phase2
+        const timeImprovement = ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
+        const accuracyChange = ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
+
+        const row = [
+          user.nickname,
+          user.testGroup,
+          user.technique,
+          phase1.readingTime.toFixed(1),
+          phase1.score,
+          phase1.mistakeRatio.toFixed(2),
+          phase2.readingTime.toFixed(1),
+          phase2.score,
+          phase2.mistakeRatio.toFixed(2),
+          timeImprovement.toFixed(1),
+          accuracyChange.toFixed(1),
+        ]
+        csvRows.push(row)
+      })
+
+    const csvContent = csvRows.map((row) => row.join(",")).join("\n")
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.setAttribute("hidden", "")
+    a.setAttribute("href", url)
+    a.setAttribute("download", "reading_study_results.csv")
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  const exportChartAsImage = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
+    if (!chartRef.current) return
+
+    try {
+      // Wait a bit for the chart to fully render
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      const canvas = await html2canvas(chartRef.current, {
+        scale: 3, // High resolution for scientific papers
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: chartRef.current.offsetWidth,
+        height: chartRef.current.offsetHeight,
+      })
+
+      // Download as PNG
+      const link = document.createElement("a")
+      link.download = `${filename}.png`
+      link.href = canvas.toDataURL("image/png")
+      link.click()
+    } catch (error) {
+      console.error("Error exporting chart:", error)
+    }
+  }
+
+  const exportChartAsSVG = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
+    if (!chartRef.current) return
+
+    try {
+      // Find the SVG element within the chart
+      const svgElement = chartRef.current.querySelector("svg")
+      if (!svgElement) {
+        console.error("No SVG found in chart")
+        return
+      }
+
+      // Clone the SVG to avoid modifying the original
+      const clonedSvg = svgElement.cloneNode(true) as SVGElement
+
+      // Set explicit dimensions and background
+      clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+      clonedSvg.style.backgroundColor = "#ffffff"
+
+      // Serialize the SVG
+      const serializer = new XMLSerializer()
+      const svgString = serializer.serializeToString(clonedSvg)
+
+      // Create blob and download
+      const blob = new Blob([svgString], { type: "image/svg+xml" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.download = `${filename}.svg`
+      link.href = url
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error exporting SVG:", error)
+    }
+  }
+
+  const exportAllChartsAsPDF = async () => {
+    setExportingCharts(true)
+
+    try {
+      const pdf = new jsPDF("l", "mm", "a4") // Landscape orientation for better chart visibility
+      const chartRefs = [
+        { ref: scatterChartRef, title: "Lesezeit vs. Fehlerquote" },
+        { ref: avgTimeChartRef, title: "Durchschnittliche Lesezeit" },
+        { ref: avgErrorChartRef, title: "Durchschnittliche Fehlerquote" },
+        { ref: techniqueComparisonRef, title: "Vergleich der Schnelllesetechniken" },
+        { ref: timeByTechniqueRef, title: "Lesezeit nach Technik" },
+        { ref: errorByTechniqueRef, title: "Fehlerquote nach Technik" },
+        { ref: individualImprovementRef, title: "Individuelle Verbesserung" },
+      ]
+
+      for (let i = 0; i < chartRefs.length; i++) {
+        const { ref, title } = chartRefs[i]
+
+        if (ref.current) {
+          // Wait for chart to render
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          const canvas = await html2canvas(ref.current, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          })
+
+          const imgData = canvas.toDataURL("image/png")
+
+          if (i > 0) {
+            pdf.addPage()
+          }
+
+          // Add title
+          pdf.setFontSize(16)
+          pdf.text(title, 20, 20)
+
+          // Calculate dimensions to fit the page
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          const pageHeight = pdf.internal.pageSize.getHeight()
+          const imgWidth = pageWidth - 40 // 20mm margin on each side
+          const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+          // Add image
+          pdf.addImage(imgData, "PNG", 20, 30, imgWidth, Math.min(imgHeight, pageHeight - 50))
+        }
+      }
+
+      pdf.save("lesestudie_diagramme.pdf")
+    } catch (error) {
+      console.error("Error creating PDF:", error)
+    } finally {
+      setExportingCharts(false)
+    }
+  }
+
   // Prepare data functions
   const prepareTimeVsMistakeData = () => {
     if (!results || results.length === 0) {
@@ -394,8 +573,8 @@ export default function AdminDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-800 text-lg">Authentifizierung wird überprüft...</p>
+          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-800 text-base sm:text-lg">Authentifizierung wird überprüft...</p>
         </div>
       </div>
     )
@@ -406,25 +585,29 @@ export default function AdminDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <Card className="w-full max-w-md shadow-lg border-0">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-            <CardTitle className="text-center text-2xl">Admin Dashboard</CardTitle>
-            <CardDescription className="text-blue-100 text-center">
+            <CardTitle className="text-center text-xl sm:text-2xl">Admin Dashboard</CardTitle>
+            <CardDescription className="text-blue-100 text-center text-sm sm:text-base">
               Melden Sie sich mit Ihren Admin-Anmeldedaten an
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 p-6">
+          <CardContent className="space-y-4 p-4 sm:p-6">
             <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
+              <Label htmlFor="email" className="text-sm sm:text-base">
+                E-Mail
+              </Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="admin@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="border-2 focus:ring-2 focus:ring-blue-500"
+                className="border-2 focus:ring-2 focus:ring-blue-500 h-10 sm:h-12 text-sm sm:text-base"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Passwort</Label>
+              <Label htmlFor="password" className="text-sm sm:text-base">
+                Passwort
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -432,13 +615,13 @@ export default function AdminDashboard() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="border-2 focus:ring-2 focus:ring-blue-500"
+                className="border-2 focus:ring-2 focus:ring-blue-500 h-10 sm:h-12 text-sm sm:text-base"
               />
             </div>
             {loginError && <div className="text-red-600 text-sm text-center bg-red-50 p-2 rounded">{loginError}</div>}
             <Button
               onClick={handleLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full bg-blue-600 hover:bg-blue-700 h-10 sm:h-12 text-sm sm:text-base"
               disabled={authLoading || !email || !password}
             >
               {authLoading ? "Wird angemeldet..." : "Anmelden"}
@@ -448,13 +631,6 @@ export default function AdminDashboard() {
       </div>
     )
   }
-
-  // Only prepare data when it's ready
-  // const timeVsMistakeData = dataReady ? prepareTimeVsMistakeData() : []
-  // const testGroupData = dataReady ? prepareTestGroupData() : []
-  // const individualData = dataReady ? prepareIndividualImprovementData() : []
-  // const avgTimeData = dataReady ? prepareAverageTimeData() : []
-  // const avgErrorData = dataReady ? prepareAverageErrorData() : []
 
   // Add this useEffect to log when data is prepared
   useEffect(() => {
@@ -472,34 +648,45 @@ export default function AdminDashboard() {
   }, [dataReady, userData, results, timeVsMistakeData, testGroupData, individualData, avgTimeData, avgErrorData])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="container mx-auto py-8 px-4 max-w-7xl">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <div className="flex justify-between items-start mb-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
+      <div className="container mx-auto py-4 sm:py-8 px-2 sm:px-4 max-w-7xl">
+        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-4">
             <div>
-              <h1 className="text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
-              <p className="text-gray-600 mb-6">Administrationsbereich für die Analyse der Studienergebnisse</p>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
+              <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
+                Administrationsbereich für die Analyse der Studienergebnisse
+              </p>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">Angemeldet als: {user?.email}</span>
-              <Button onClick={handleLogout} variant="outline" size="sm" className="flex items-center gap-2">
-                <LogOut className="h-4 w-4" />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <span className="text-xs sm:text-sm text-gray-600">Angemeldet als: {user?.email}</span>
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 text-xs sm:text-sm"
+              >
+                <LogOut className="h-3 w-3 sm:h-4 sm:w-4" />
                 Abmelden
               </Button>
             </div>
           </div>
 
-          <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
-            <div className="flex gap-2">
-              <Button onClick={fetchData} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={fetchData}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-10"
+              >
                 {loading ? "Wird geladen..." : "Daten aktualisieren"}
               </Button>
               <Button
                 onClick={downloadCSV}
                 disabled={userData.length === 0}
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm h-8 sm:h-10"
               >
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 CSV herunterladen
               </Button>
             </div>
@@ -507,44 +694,50 @@ export default function AdminDashboard() {
               <Button
                 onClick={exportAllChartsAsPDF}
                 disabled={userData.length === 0 || exportingCharts}
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-red-600 hover:bg-red-700 text-xs sm:text-sm h-8 sm:h-10"
               >
-                <FileText className="h-4 w-4 mr-2" />
+                <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 {exportingCharts ? "Exportiere..." : "Alle Diagramme als PDF"}
               </Button>
             </div>
           </div>
         </div>
         {userData.length > 0 ? (
-          <Tabs defaultValue="overview" className="space-y-8">
+          <Tabs defaultValue="overview" className="space-y-6 sm:space-y-8">
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-blue-100 p-1 rounded-lg">
-              <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-blue-700">
+              <TabsTrigger
+                value="overview"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
+              >
                 Übersicht
               </TabsTrigger>
               <TabsTrigger
                 value="techniques"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
               >
                 Technikvergleich
               </TabsTrigger>
               <TabsTrigger
                 value="individual"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
               >
                 Einzelergebnisse
               </TabsTrigger>
-              <TabsTrigger value="raw" className="data-[state=active]:bg-white data-[state=active]:text-blue-700">
+              <TabsTrigger
+                value="raw"
+                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
+              >
                 Rohdaten
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview" className="space-y-6">
+            <TabsContent value="overview" className="space-y-4 sm:space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                     <div>
-                      <CardTitle>Lesezeit vs. Fehlerquote</CardTitle>
-                      <CardDescription className="text-blue-100">
+                      <CardTitle className="text-lg sm:text-xl">Lesezeit vs. Fehlerquote</CardTitle>
+                      <CardDescription className="text-blue-100 text-sm sm:text-base">
                         Vergleich von normalem Lesen und Schnelllesen bei allen Teilnehmern
                       </CardDescription>
                     </div>
@@ -552,26 +745,26 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsImage(scatterChartRef, "lesezeit_vs_fehlerquote")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         PNG
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsSVG(scatterChartRef, "lesezeit_vs_fehlerquote")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         SVG
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <div ref={scatterChartRef} className="h-[500px]">
+                <CardContent className="p-3 sm:p-6">
+                  <div ref={scatterChartRef} className="h-[300px] sm:h-[500px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -580,12 +773,14 @@ export default function AdminDashboard() {
                           dataKey="readingTime"
                           name="Lesezeit"
                           label={{ value: "Lesezeit (Sekunden)", position: "bottom", offset: 20 }}
+                          tick={{ fontSize: 12 }}
                         />
                         <YAxis
                           type="number"
                           dataKey="mistakeRatio"
                           name="Fehlerquote"
                           label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
+                          tick={{ fontSize: 12 }}
                         />
                         <ZAxis range={[60, 60]} />
                         <Tooltip cursor={{ strokeDasharray: "3 3" }} />
@@ -611,43 +806,49 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <CardTitle>Durchschnittliche Lesezeit</CardTitle>
-                        <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Lesezeit</CardTitle>
+                        <CardDescription className="text-blue-100 text-sm">
+                          Normales Lesen vs. Schnelllesen
+                        </CardDescription>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsImage(avgTimeChartRef, "durchschnittliche_lesezeit")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           PNG
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsSVG(avgTimeChartRef, "durchschnittliche_lesezeit")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           SVG
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-6">
-                    <div ref={avgTimeChartRef} className="h-[300px]">
+                  <CardContent className="p-3 sm:p-6">
+                    <div ref={avgTimeChartRef} className="h-[250px] sm:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={avgTimeData} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }} />
-                          <YAxis type="category" dataKey="name" width={80} />
+                          <XAxis
+                            type="number"
+                            label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
                           <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
                           <Legend
                             layout="horizontal"
@@ -664,44 +865,47 @@ export default function AdminDashboard() {
                 </Card>
 
                 <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white
-                    "
-                  >
-                    <div className="flex justify-between items-center">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <CardTitle>Durchschnittliche Fehlerquote</CardTitle>
-                        <CardDescription className="text-blue-100">Normales Lesen vs. Schnelllesen</CardDescription>
+                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Fehlerquote</CardTitle>
+                        <CardDescription className="text-blue-100 text-sm">
+                          Normales Lesen vs. Schnelllesen
+                        </CardDescription>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsImage(avgErrorChartRef, "durchschnittliche_fehlerquote")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           PNG
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsSVG(avgErrorChartRef, "durchschnittliche_fehlerquote")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           SVG
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-6">
-                    <div ref={avgErrorChartRef} className="h-[300px]">
+                  <CardContent className="p-3 sm:p-6">
+                    <div ref={avgErrorChartRef} className="h-[250px] sm:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={avgErrorData} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" label={{ value: "Fehlerquote", position: "bottom", offset: 0 }} />
-                          <YAxis type="category" dataKey="name" width={80} />
+                          <XAxis
+                            type="number"
+                            label={{ value: "Fehlerquote", position: "bottom", offset: 0 }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
                           <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
                           <Legend
                             layout="horizontal"
@@ -719,13 +923,13 @@ export default function AdminDashboard() {
               </div>
             </TabsContent>
 
-            <TabsContent value="techniques" className="space-y-6">
+            <TabsContent value="techniques" className="space-y-4 sm:space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                     <div>
-                      <CardTitle>Vergleich der Schnelllesetechniken</CardTitle>
-                      <CardDescription className="text-blue-100">
+                      <CardTitle className="text-lg sm:text-xl">Vergleich der Schnelllesetechniken</CardTitle>
+                      <CardDescription className="text-blue-100 text-sm sm:text-base">
                         Vergleich der Wirksamkeit verschiedener Schnelllesetechniken
                       </CardDescription>
                     </div>
@@ -733,42 +937,45 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsImage(techniqueComparisonRef, "technikvergleich")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         PNG
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsSVG(techniqueComparisonRef, "technikvergleich")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         SVG
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <div ref={techniqueComparisonRef} className="h-[400px]">
+                <CardContent className="p-3 sm:p-6">
+                  <div ref={techniqueComparisonRef} className="h-[300px] sm:h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={testGroupData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           dataKey="technique"
-                          tick={{ fontSize: 12 }}
+                          tick={{ fontSize: 10 }}
                           height={60}
                           tickFormatter={(value) => {
                             // Wrap long technique names
-                            if (value.length > 15) {
-                              return value.substring(0, 15) + "..."
+                            if (value.length > 12) {
+                              return value.substring(0, 12) + "..."
                             }
                             return value
                           }}
                         />
-                        <YAxis label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }} />
+                        <YAxis
+                          label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }}
+                          tick={{ fontSize: 12 }}
+                        />
                         <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, ""]} />
                         <Legend
                           layout="horizontal"
@@ -784,53 +991,56 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <CardTitle>Durchschnittliche Lesezeit nach Technik</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Lesezeit nach Technik</CardTitle>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsImage(timeByTechniqueRef, "lesezeit_nach_technik")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           PNG
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsSVG(timeByTechniqueRef, "lesezeit_nach_technik")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           SVG
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-6">
-                    <div ref={timeByTechniqueRef} className="h-[300px]">
+                  <CardContent className="p-3 sm:p-6">
+                    <div ref={timeByTechniqueRef} className="h-[250px] sm:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={testGroupData}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis
                             dataKey="technique"
-                            tick={{ fontSize: 12 }}
+                            tick={{ fontSize: 10 }}
                             height={60}
                             tickFormatter={(value) => {
                               // Wrap long technique names
-                              if (value.length > 15) {
-                                return value.substring(0, 15) + "..."
+                              if (value.length > 12) {
+                                return value.substring(0, 12) + "..."
                               }
                               return value
                             }}
                           />
-                          <YAxis label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }} />
+                          <YAxis
+                            label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }}
+                            tick={{ fontSize: 12 }}
+                          />
                           <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
                           <Legend
                             layout="horizontal"
@@ -848,50 +1058,53 @@ export default function AdminDashboard() {
 
                 <Card className="border-0 shadow-lg overflow-hidden">
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <CardTitle>Durchschnittliche Fehlerquote nach Technik</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Fehlerquote nach Technik</CardTitle>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsImage(errorByTechniqueRef, "fehlerquote_nach_technik")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           PNG
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600"
+                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                           onClick={() => exportChartAsSVG(errorByTechniqueRef, "fehlerquote_nach_technik")}
                         >
-                          <FileImage className="h-4 w-4 mr-1" />
+                          <FileImage className="h-3 w-3 mr-1" />
                           SVG
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-6">
-                    <div ref={errorByTechniqueRef} className="h-[300px]">
+                  <CardContent className="p-3 sm:p-6">
+                    <div ref={errorByTechniqueRef} className="h-[250px] sm:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={testGroupData}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis
                             dataKey="technique"
-                            tick={{ fontSize: 12 }}
+                            tick={{ fontSize: 10 }}
                             height={60}
                             tickFormatter={(value) => {
                               // Wrap long technique names
-                              if (value.length > 15) {
-                                return value.substring(0, 15) + "..."
+                              if (value.length > 12) {
+                                return value.substring(0, 12) + "..."
                               }
                               return value
                             }}
                           />
-                          <YAxis label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }} />
+                          <YAxis
+                            label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
+                            tick={{ fontSize: 12 }}
+                          />
                           <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
                           <Legend
                             layout="horizontal"
@@ -909,13 +1122,13 @@ export default function AdminDashboard() {
               </div>
             </TabsContent>
 
-            <TabsContent value="individual" className="space-y-6">
+            <TabsContent value="individual" className="space-y-4 sm:space-y-6">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                     <div>
-                      <CardTitle>Individuelle Verbesserung</CardTitle>
-                      <CardDescription className="text-blue-100">
+                      <CardTitle className="text-lg sm:text-xl">Individuelle Verbesserung</CardTitle>
+                      <CardDescription className="text-blue-100 text-sm sm:text-base">
                         Zeitverbesserung vs. Genauigkeitsänderung für jeden Teilnehmer
                       </CardDescription>
                     </div>
@@ -923,26 +1136,26 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsImage(individualImprovementRef, "individuelle_verbesserung")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         PNG
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600"
+                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
                         onClick={() => exportChartAsSVG(individualImprovementRef, "individuelle_verbesserung")}
                       >
-                        <FileImage className="h-4 w-4 mr-1" />
+                        <FileImage className="h-3 w-3 mr-1" />
                         SVG
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <div ref={individualImprovementRef} className="h-[500px]">
+                <CardContent className="p-3 sm:p-6">
+                  <div ref={individualImprovementRef} className="h-[300px] sm:h-[500px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
                         <CartesianGrid />
@@ -951,12 +1164,14 @@ export default function AdminDashboard() {
                           dataKey="timeImprovement"
                           name="Zeitverbesserung"
                           label={{ value: "Zeitverbesserung (%)", position: "bottom", offset: 20 }}
+                          tick={{ fontSize: 12 }}
                         />
                         <YAxis
                           type="number"
                           dataKey="accuracyChange"
                           name="Genauigkeitsänderung"
                           label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
+                          tick={{ fontSize: 12 }}
                         />
                         <Tooltip
                           formatter={(value, name, payload: Payload[]) => [Number(value).toFixed(2) + "%", name]}
@@ -996,22 +1211,38 @@ export default function AdminDashboard() {
             <TabsContent value="raw">
               <Card className="border-0 shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <CardTitle>Benutzerdaten</CardTitle>
+                  <CardTitle className="text-lg sm:text-xl">Benutzerdaten</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="bg-blue-50">
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Spitzname</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Testgruppe</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Technik</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 1 Zeit</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 1 Punkte</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 2 Zeit</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Phase 2 Punkte</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">Zeitverbesserung</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-800">
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Spitzname
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Testgruppe
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Technik
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Phase 1 Zeit
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Phase 1 Punkte
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Phase 2 Zeit
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Phase 2 Punkte
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
+                            Zeitverbesserung
+                          </th>
+                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
                             Genauigkeitsänderung
                           </th>
                         </tr>
@@ -1029,17 +1260,21 @@ export default function AdminDashboard() {
 
                             return (
                               <tr key={user.id} className="hover:bg-blue-50">
-                                <td className="px-4 py-3 text-sm">{user.nickname}</td>
-                                <td className="px-4 py-3 text-sm">{user.testGroup}</td>
-                                <td className="px-4 py-3 text-sm">{user.technique}</td>
-                                <td className="px-4 py-3 text-sm">{phase1.readingTime.toFixed(1)}s</td>
-                                <td className="px-4 py-3 text-sm">{phase1.score}/10</td>
-                                <td className="px-4 py-3 text-sm">{phase2.readingTime.toFixed(1)}s</td>
-                                <td className="px-4 py-3 text-sm">{phase2.score}/10</td>
-                                <td className="px-4 py-3 text-sm font-medium text-green-600">
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.nickname}</td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.testGroup}</td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.technique}</td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                  {phase1.readingTime.toFixed(1)}s
+                                </td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{phase1.score}/10</td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                  {phase2.readingTime.toFixed(1)}s
+                                </td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{phase2.score}/10</td>
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-green-600">
                                   {timeImprovement.toFixed(1)}%
                                 </td>
-                                <td className="px-4 py-3 text-sm font-medium text-blue-600">
+                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-blue-600">
                                   {accuracyChange.toFixed(1)}%
                                 </td>
                               </tr>
@@ -1053,8 +1288,8 @@ export default function AdminDashboard() {
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <p className="text-gray-500 text-lg">
+          <div className="bg-white rounded-lg shadow-lg p-8 sm:p-12 text-center">
+            <p className="text-gray-500 text-base sm:text-lg">
               Keine Ergebnisse gefunden. Starten Sie die Studie, um Daten zu sammeln.
             </p>
           </div>

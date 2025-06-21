@@ -450,16 +450,14 @@ export default function ReadingStudyApp() {
   const renderNicknameEntry = () => (
     <Card className="w-full max-w-md mx-auto shadow-lg border-0">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-          <BookOpen className="h-7 w-7" />
+        <CardTitle className="flex items-center justify-center gap-2 text-xl sm:text-2xl">
+          <BookOpen className="h-6 w-6 sm:h-7 sm:w-7" />
           Lesestudie
         </CardTitle>
-        
-        
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         <div className="space-y-3">
-          <Label htmlFor="nickname" className="text-base">
+          <Label htmlFor="nickname" className="text-sm sm:text-base">
             Bitte geben Sie einen Namen ein (kann anonym sein)
           </Label>
           <Input
@@ -467,12 +465,12 @@ export default function ReadingStudyApp() {
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             placeholder="z.B. Leser123"
-            className="h-12 text-base border-2 focus:ring-2 focus:ring-blue-500"
+            className="h-10 sm:h-12 text-sm sm:text-base border-2 focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <Button
           onClick={() => setStep(1)}
-          className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700"
+          className="w-full h-10 sm:h-12 text-sm sm:text-base bg-blue-600 hover:bg-blue-700"
           disabled={!nickname.trim()}
         >
           Weiter
@@ -484,19 +482,26 @@ export default function ReadingStudyApp() {
   const renderInstructions = () => (
     <Card className="w-full max-w-2xl mx-auto shadow-lg border-0">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-          <Target className="h-7 w-7" />
+        <CardTitle className="flex items-center justify-center gap-2 text-xl sm:text-2xl">
+          <Target className="h-6 w-6 sm:h-7 sm:w-7" />
           Studienanleitung
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
-        <div className="text-center space-y-4 py-4">
-          <p className="text-xl">Bitte lesen Sie den Text und beantworten Sie die danach gestellten Fragen.</p>
-          <p className="text-gray-600">
-             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige Fragen zum Inhalt des Textes.
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+        <div className="text-center space-y-4 py-2 sm:py-4">
+          <p className="text-lg sm:text-xl">
+            Bitte lesen Sie den Text und beantworten Sie die danach gestellten Fragen.
+          </p>
+          <p className="text-sm sm:text-base text-gray-600">
+            Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige
+            Fragen zum Inhalt des Textes.
           </p>
         </div>
-        <Button onClick={() => setStep(2)} className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700" size="lg">
+        <Button
+          onClick={() => setStep(2)}
+          className="w-full h-10 sm:h-12 text-sm sm:text-base bg-blue-600 hover:bg-blue-700"
+          size="lg"
+        >
           Timer starten
         </Button>
       </CardContent>
@@ -506,37 +511,46 @@ export default function ReadingStudyApp() {
   const renderReading = () => (
     <Card className="w-full max-w-4xl mx-auto shadow-lg border-0">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-2xl">
-            <Clock className="h-6 w-6" />
-            {passages[currentPhase].title}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-2xl">
+            <Clock className="h-5 w-5 sm:h-6 sm:w-6" />
+            <span className="break-words">{passages[currentPhase].title}</span>
           </CardTitle>
           {isReading && (
-            <div className="flex items-center gap-2 text-green-300 bg-green-800/30 py-1 px-3 rounded-full">
+            <div className="flex items-center gap-2 text-green-300 bg-green-800/30 py-1 px-3 rounded-full text-sm">
               <div className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
               Lesen...
             </div>
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         {!isReading ? (
-          <div className="text-center py-12">
-            <Button onClick={startReading} size="lg" className="h-12 text-base bg-blue-600 hover:bg-blue-700">
+          <div className="text-center py-8 sm:py-12">
+            <Button
+              onClick={startReading}
+              size="lg"
+              className="h-10 sm:h-12 text-sm sm:text-base bg-blue-600 hover:bg-blue-700"
+            >
               Timer starten
             </Button>
           </div>
         ) : (
           <>
-            <div className="prose max-w-none text-justify leading-relaxed">
+            <div className="prose max-w-none text-justify leading-relaxed text-sm sm:text-base">
               {passages[currentPhase].text.split("\n\n").map((paragraph, index) => (
-                <p key={index} className="mb-4">
+                <p key={index} className="mb-3 sm:mb-4">
                   {paragraph}
                 </p>
               ))}
             </div>
-            <div className="text-center pt-6 border-t">
-              <Button onClick={stopReading} size="lg" variant="destructive" className="h-12 text-base">
+            <div className="text-center pt-4 sm:pt-6 border-t">
+              <Button
+                onClick={stopReading}
+                size="lg"
+                variant="destructive"
+                className="h-10 sm:h-12 text-sm sm:text-base"
+              >
                 Timer stoppen
               </Button>
             </div>
@@ -549,8 +563,8 @@ export default function ReadingStudyApp() {
   const renderQuestions = () => (
     <Card className="w-full max-w-3xl mx-auto shadow-lg border-0">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <CardTitle className="text-2xl">Verständnisfragen</CardTitle>
-        <CardDescription className="text-blue-100">
+        <CardTitle className="text-lg sm:text-2xl">Verständnisfragen</CardTitle>
+        <CardDescription className="text-blue-100 text-sm sm:text-base">
           Bitte beantworten Sie die folgenden Fragen zum Inhalt des Textes.
         </CardDescription>
         <Progress
@@ -558,17 +572,20 @@ export default function ReadingStudyApp() {
           className="h-2 mt-4"
         />
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         {passages[currentPhase].questions.map((q, index) => (
-          <div key={index} className="space-y-3 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium text-lg">
+          <div key={index} className="space-y-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium text-base sm:text-lg">
               {index + 1}. {q.question}
             </h3>
             <RadioGroup value={currentAnswers[index] || ""} onValueChange={(value) => handleAnswerChange(index, value)}>
               {q.options.map((option, optionIndex) => (
-                <div key={optionIndex} className="flex items-center space-x-2 py-2">
-                  <RadioGroupItem value={optionIndex.toString()} id={`q${index}-${optionIndex}`} />
-                  <Label htmlFor={`q${index}-${optionIndex}`} className="cursor-pointer">
+                <div key={optionIndex} className="flex items-start space-x-2 py-2">
+                  <RadioGroupItem value={optionIndex.toString()} id={`q${index}-${optionIndex}`} className="mt-0.5" />
+                  <Label
+                    htmlFor={`q${index}-${optionIndex}`}
+                    className="cursor-pointer text-sm sm:text-base leading-relaxed"
+                  >
                     {option}
                   </Label>
                 </div>
@@ -578,7 +595,7 @@ export default function ReadingStudyApp() {
         ))}
         <Button
           onClick={submitAnswers}
-          className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700"
+          className="w-full h-10 sm:h-12 text-sm sm:text-base bg-blue-600 hover:bg-blue-700"
           size="lg"
           disabled={currentAnswers.filter((a) => a).length !== passages[currentPhase].questions.length || isSubmitting}
         >
@@ -595,24 +612,29 @@ export default function ReadingStudyApp() {
     return (
       <Card className="w-full max-w-3xl mx-auto shadow-lg border-0">
         <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-          <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-            <Brain className="h-7 w-7" />
+          <CardTitle className="flex items-center justify-center gap-2 text-xl sm:text-2xl">
+            <Brain className="h-6 w-6 sm:h-7 sm:w-7" />
             Schnelllesetechnik
           </CardTitle>
-          <CardDescription className="text-blue-100">
+          <CardDescription className="text-blue-100 text-sm sm:text-base">
             Versuchen Sie diese Technik, um Ihre Lesegeschwindigkeit zu verbessern.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6 p-6">
-          <div className="p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
-            <h3 className="font-semibold text-xl mb-3 text-blue-800">{technique.name}</h3>
-            <p className="text-gray-700 leading-relaxed">{technique.description}</p>
+        <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+          <div className="p-4 sm:p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
+            <h3 className="font-semibold text-lg sm:text-xl mb-3 text-blue-800">{technique.name}</h3>
+            <p className="text-gray-700 leading-relaxed text-sm sm:text-base">{technique.description}</p>
           </div>
-          <div className="text-center pt-4">
-            <p className="text-gray-600 mb-6">
-              Bitte wenden Sie nun beim zweiten Lesetext diese Technik an und beantworten Sie anschließend die Fragen zum Inhalt des Textes.
+          <div className="text-center pt-2 sm:pt-4">
+            <p className="text-gray-600 mb-4 sm:mb-6 text-sm sm:text-base">
+              Bitte wenden Sie nun beim zweiten Lesetext diese Technik an und beantworten Sie anschließend die Fragen
+              zum Inhalt des Textes.
             </p>
-            <Button onClick={startNextPhase} size="lg" className="h-12 text-base bg-blue-600 hover:bg-blue-700">
+            <Button
+              onClick={startNextPhase}
+              size="lg"
+              className="h-10 sm:h-12 text-sm sm:text-base bg-blue-600 hover:bg-blue-700"
+            >
               Weiter zu Phase 2
             </Button>
           </div>
@@ -624,30 +646,32 @@ export default function ReadingStudyApp() {
   const renderCompletion = () => (
     <Card className="w-full max-w-2xl mx-auto shadow-lg border-0">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <CardTitle className="text-2xl text-center">Studie abgeschlossen!</CardTitle>
-        <CardDescription className="text-blue-100 text-center">
+        <CardTitle className="text-xl sm:text-2xl text-center">Studie abgeschlossen!</CardTitle>
+        <CardDescription className="text-blue-100 text-center text-sm sm:text-base">
           Vielen Dank für Ihre Teilnahme.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="text-center p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
-            <h3 className="font-semibold text-lg mb-2 text-blue-800">Phase 1</h3>
-            <p className="text-3xl font-bold text-blue-600">{readingTimes[0]?.toFixed(1)}s</p>
-            <p className="text-sm text-gray-500 mb-4">Lesezeit</p>
-            <p className="text-xl font-semibold text-blue-800">{scores[0]}/10</p>
-            <p className="text-sm text-gray-500">Richtige Antworten</p>
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+          <div className="text-center p-4 sm:p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
+            <h3 className="font-semibold text-base sm:text-lg mb-2 text-blue-800">Phase 1</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-blue-600">{readingTimes[0]?.toFixed(1)}s</p>
+            <p className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-4">Lesezeit</p>
+            <p className="text-lg sm:text-xl font-semibold text-blue-800">{scores[0]}/10</p>
+            <p className="text-xs sm:text-sm text-gray-500">Richtige Antworten</p>
           </div>
-          <div className="text-center p-6 border-2 border-green-100 rounded-lg bg-green-50">
-            <h3 className="font-semibold text-lg mb-2 text-green-800">Phase 2</h3>
-            <p className="text-3xl font-bold text-green-600">{readingTimes[1]?.toFixed(1)}s</p>
-            <p className="text-sm text-gray-500 mb-4">Lesezeit</p>
-            <p className="text-xl font-semibold text-green-800">{scores[1]}/10</p>
-            <p className="text-sm text-gray-500">Richtige Antworten</p>
+          <div className="text-center p-4 sm:p-6 border-2 border-green-100 rounded-lg bg-green-50">
+            <h3 className="font-semibold text-base sm:text-lg mb-2 text-green-800">Phase 2</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">{readingTimes[1]?.toFixed(1)}s</p>
+            <p className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-4">Lesezeit</p>
+            <p className="text-lg sm:text-xl font-semibold text-green-800">{scores[1]}/10</p>
+            <p className="text-xs sm:text-sm text-gray-500">Richtige Antworten</p>
           </div>
         </div>
-        <div className="text-center p-4 bg-gray-50 rounded-lg mt-4">
-          <p className="text-gray-600">Ihre Ergebnisse wurden gespeichert. Vielen Dank für Ihre Teilnahme!</p>
+        <div className="text-center p-3 sm:p-4 bg-gray-50 rounded-lg mt-4">
+          <p className="text-gray-600 text-sm sm:text-base">
+            Ihre Ergebnisse wurden gespeichert. Vielen Dank für Ihre Teilnahme!
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -658,36 +682,36 @@ export default function ReadingStudyApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-800 text-lg">Lesestudie wird geladen...</p>
+          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-800 text-base sm:text-lg">Lesestudie wird geladen...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="container mx-auto py-8">
-        <div className="mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
+      <div className="container mx-auto py-4 sm:py-8">
+        <div className="mb-6 sm:mb-8">
           <div className="flex justify-center mb-4">
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <div className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-muted-foreground overflow-x-auto pb-2">
               {steps.map((stepName, index) => (
-                <div key={index} className="flex items-center">
+                <div key={index} className="flex items-center flex-shrink-0">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                    className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-medium ${
                       index <= step ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
                     }`}
                   >
                     {index + 1}
                   </div>
                   {index < steps.length - 1 && (
-                    <div className={`w-8 h-0.5 ${index < step ? "bg-blue-600" : "bg-gray-200"}`} />
+                    <div className={`w-4 sm:w-8 h-0.5 ${index < step ? "bg-blue-600" : "bg-gray-200"}`} />
                   )}
                 </div>
               ))}
             </div>
           </div>
-          <h1 className="text-center text-sm font-medium text-blue-800">{steps[step]}</h1>
+          <h1 className="text-center text-xs sm:text-sm font-medium text-blue-800 px-2">{steps[step]}</h1>
         </div>
 
         <div className="transition-all duration-500 ease-in-out">
