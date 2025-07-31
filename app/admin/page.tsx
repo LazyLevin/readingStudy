@@ -451,6 +451,9 @@ export default function AdminDashboard() {
       return []
     }
 
+    console.log("Preparing time vs mistake data with", results.length, "results")
+    console.log("Sample results:", results.slice(0, 3))
+
     // Filter out invalid data
     const validResults = results.filter(r => 
       r && 
@@ -480,6 +483,7 @@ export default function AdminDashboard() {
 
     const combinedData = [...normalReadingData, ...speedReadingData]
     console.log(`Chart data: ${normalReadingData.length} normal, ${speedReadingData.length} speed reading`)
+    console.log("Sample combined data:", combinedData.slice(0, 3))
     
     return combinedData
   }
@@ -489,6 +493,9 @@ export default function AdminDashboard() {
       console.log("No user data available for test group chart")
       return []
     }
+
+    console.log("Preparing test group data with", userData.length, "users")
+    console.log("Sample user data:", userData.slice(0, 2))
 
     const validUsers = userData.filter((user) => 
       user.results?.phase1 && 
@@ -559,17 +566,23 @@ export default function AdminDashboard() {
 
     const result = Object.values(groupData).filter((d: any) => d.count > 0)
     console.log(`Test group data prepared: ${result.length} groups with data`)
+    console.log("Sample test group data:", result.slice(0, 2))
     return result
   }
 
   const prepareIndividualImprovementData = () => {
     if (!userData || userData.length === 0) {
+      console.log("No user data available for individual improvement chart")
       return []
     }
 
+    console.log("Preparing individual improvement data with", userData.length, "users")
+
     const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
 
-    return validUsers.map((user) => {
+    console.log(`Valid users for individual improvement chart: ${validUsers.length} out of ${userData.length}`)
+
+    const result = validUsers.map((user) => {
       const phase1 = user.results.phase1
       const phase2 = user.results.phase2
       const timeImprovement =
@@ -594,6 +607,10 @@ export default function AdminDashboard() {
         accuracyChange: isFinite(accuracyChange) ? accuracyChange : 0,
       }
     })
+
+    console.log(`Individual improvement data prepared: ${result.length} users`)
+    console.log("Sample individual data:", result.slice(0, 2))
+    return result
   }
 
   const prepareAverageTimeData = () => {
@@ -601,6 +618,8 @@ export default function AdminDashboard() {
       console.log("No user data available for average time chart")
       return []
     }
+
+    console.log("Preparing average time data with", userData.length, "users")
 
     const validUsers = userData.filter((user) => 
       user.results?.phase1 && 
@@ -623,13 +642,16 @@ export default function AdminDashboard() {
 
     console.log(`Average times: Normal=${avgNormalTime.toFixed(1)}s, Speed=${avgSpeedTime.toFixed(1)}s`)
 
-    return [
+    const result = [
       {
         name: "Lesezeit",
         "Normales Lesen": avgNormalTime,
         Schnelllesen: avgSpeedTime,
       },
     ]
+    
+    console.log("Average time data prepared:", result)
+    return result
   }
 
   const prepareAverageErrorData = () => {
@@ -637,6 +659,8 @@ export default function AdminDashboard() {
       console.log("No user data available for average error chart")
       return []
     }
+
+    console.log("Preparing average error data with", userData.length, "users")
 
     const validUsers = userData.filter((user) => 
       user.results?.phase1 && 
@@ -657,24 +681,42 @@ export default function AdminDashboard() {
 
     console.log(`Average errors: Normal=${(avgNormalError * 100).toFixed(1)}%, Speed=${(avgSpeedError * 100).toFixed(1)}%`)
 
-    return [
+    const result = [
       {
         name: "Fehlerquote",
         "Normales Lesen": avgNormalError,
         Schnelllesen: avgSpeedError,
       },
     ]
+    
+    console.log("Average error data prepared:", result)
+    return result
   }
 
   useEffect(() => {
-    if (dataReady) {
-      setTimeVsMistakeData(prepareTimeVsMistakeData())
-      setTestGroupData(prepareTestGroupData())
-      setIndividualData(prepareIndividualImprovementData())
-      setAvgTimeData(prepareAverageTimeData())
-      setAvgErrorData(prepareAverageErrorData())
+    if (dataReady && results.length > 0) {
+      console.log("Preparing chart data...")
+      const timeVsMistake = prepareTimeVsMistakeData()
+      const testGroup = prepareTestGroupData()
+      const individual = prepareIndividualImprovementData()
+      const avgTime = prepareAverageTimeData()
+      const avgError = prepareAverageErrorData()
+      
+      console.log("Chart data prepared:", {
+        timeVsMistake: timeVsMistake.length,
+        testGroup: testGroup.length,
+        individual: individual.length,
+        avgTime: avgTime.length,
+        avgError: avgError.length
+      })
+      
+      setTimeVsMistakeData(timeVsMistake)
+      setTestGroupData(testGroup)
+      setIndividualData(individual)
+      setAvgTimeData(avgTime)
+      setAvgErrorData(avgError)
     }
-  }, [dataReady, userData, results])
+  }, [dataReady, results, userData])
 
   // Show loading spinner while checking authentication
   if (authLoading) {
@@ -740,20 +782,7 @@ export default function AdminDashboard() {
     )
   }
 
-  // Add this useEffect to log when data is prepared
-  useEffect(() => {
-    if (dataReady) {
-      console.log("Chart data prepared:", {
-        timeVsMistakeData: timeVsMistakeData.length,
-        testGroupData: testGroupData.length,
-        individualData: individualData.length,
-        avgTimeData: avgTimeData.length,
-        avgErrorData: avgErrorData.length,
-      })
-      console.log("Sample timeVsMistakeData:", timeVsMistakeData.slice(0, 2))
-      console.log("Sample testGroupData:", testGroupData.slice(0, 2))
-    }
-  }, [dataReady, userData, results, timeVsMistakeData, testGroupData, individualData, avgTimeData, avgErrorData])
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
@@ -935,7 +964,7 @@ export default function AdminDashboard() {
                       </ResponsiveContainer>
                     ) : (
                       <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Keine Daten verfügbar für dieses Diagramm</p>
+                        <p>Keine Daten verfügbar für dieses Diagramm (timeVsMistakeData: {timeVsMistakeData.length})</p>
                       </div>
                     )}
                   </div>
@@ -999,7 +1028,7 @@ export default function AdminDashboard() {
                         </ResponsiveContainer>
                       ) : (
                         <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm</p>
+                          <p>Keine Daten verfügbar für dieses Diagramm (avgTimeData: {avgTimeData.length})</p>
                         </div>
                       )}
                     </div>
@@ -1062,7 +1091,7 @@ export default function AdminDashboard() {
                         </ResponsiveContainer>
                       ) : (
                         <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm</p>
+                          <p>Keine Daten verfügbar für dieses Diagramm (avgErrorData: {avgErrorData.length})</p>
                         </div>
                       )}
                     </div>
@@ -1105,36 +1134,42 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-3 sm:p-6">
                   <div ref={techniqueComparisonRef} className="h-[300px] sm:h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={testGroupData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="technique"
-                          tick={{ fontSize: 10 }}
-                          height={60}
-                          tickFormatter={(value) => {
-                            // Wrap long technique names
-                            if (value.length > 12) {
-                              return value.substring(0, 12) + "..."
-                            }
-                            return value
-                          }}
-                        />
-                        <YAxis
-                          label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, ""]} />
-                        <Legend
-                          layout="horizontal"
-                          verticalAlign="top"
-                          align="center"
-                          wrapperStyle={{ paddingBottom: "20px" }}
-                        />
-                        <Bar dataKey="timeImprovement" name="Lesegeschwindigkeitsverbesserung (%)" fill="#10b981" />
-                        <Bar dataKey="accuracyChange" name="Genauigkeitsänderung (%)" fill="#4f46e5" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    {testGroupData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={testGroupData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="technique"
+                            tick={{ fontSize: 10 }}
+                            height={60}
+                            tickFormatter={(value) => {
+                              // Wrap long technique names
+                              if (value.length > 12) {
+                                return value.substring(0, 12) + "..."
+                              }
+                              return value
+                            }}
+                          />
+                          <YAxis
+                            label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, ""]} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Bar dataKey="timeImprovement" name="Lesegeschwindigkeitsverbesserung (%)" fill="#10b981" />
+                          <Bar dataKey="accuracyChange" name="Genauigkeitsänderung (%)" fill="#4f46e5" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1170,36 +1205,42 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="p-3 sm:p-6">
                     <div ref={timeByTechniqueRef} className="h-[250px] sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={testGroupData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            dataKey="technique"
-                            tick={{ fontSize: 10 }}
-                            height={60}
-                            tickFormatter={(value) => {
-                              // Wrap long technique names
-                              if (value.length > 12) {
-                                return value.substring(0, 12) + "..."
-                              }
-                              return value
-                            }}
-                          />
-                          <YAxis
-                            label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Bar dataKey="normalReadingTime" name="Normales Lesen" fill="#4f46e5" />
-                          <Bar dataKey="speedReadingTime" name="Schnelllesen" fill="#10b981" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      {testGroupData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={testGroupData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="technique"
+                              tick={{ fontSize: 10 }}
+                              height={60}
+                              tickFormatter={(value) => {
+                                // Wrap long technique names
+                                if (value.length > 12) {
+                                  return value.substring(0, 12) + "..."
+                                }
+                                return value
+                              }}
+                            />
+                            <YAxis
+                              label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
+                            <Legend
+                              layout="horizontal"
+                              verticalAlign="top"
+                              align="center"
+                              wrapperStyle={{ paddingBottom: "20px" }}
+                            />
+                            <Bar dataKey="normalReadingTime" name="Normales Lesen" fill="#4f46e5" />
+                            <Bar dataKey="speedReadingTime" name="Schnelllesen" fill="#10b981" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1234,36 +1275,42 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="p-3 sm:p-6">
                     <div ref={errorByTechniqueRef} className="h-[250px] sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={testGroupData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            dataKey="technique"
-                            tick={{ fontSize: 10 }}
-                            height={60}
-                            tickFormatter={(value) => {
-                              // Wrap long technique names
-                              if (value.length > 12) {
-                                return value.substring(0, 12) + "..."
-                              }
-                              return value
-                            }}
-                          />
-                          <YAxis
-                            label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Bar dataKey="normalMistakeRatio" name="Normales Lesen" fill="#4f46e5" />
-                          <Bar dataKey="speedMistakeRatio" name="Schnelllesen" fill="#10b981" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      {testGroupData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={testGroupData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="technique"
+                              tick={{ fontSize: 10 }}
+                              height={60}
+                              tickFormatter={(value) => {
+                                // Wrap long technique names
+                                if (value.length > 12) {
+                                  return value.substring(0, 12) + "..."
+                                }
+                                return value
+                              }}
+                            />
+                            <YAxis
+                              label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
+                            <Legend
+                              layout="horizontal"
+                              verticalAlign="top"
+                              align="center"
+                              wrapperStyle={{ paddingBottom: "20px" }}
+                            />
+                            <Bar dataKey="normalMistakeRatio" name="Normales Lesen" fill="#4f46e5" />
+                            <Bar dataKey="speedMistakeRatio" name="Schnelllesen" fill="#10b981" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1304,53 +1351,59 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-3 sm:p-6">
                   <div ref={individualImprovementRef} className="h-[300px] sm:h-[500px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
-                        <CartesianGrid />
-                        <XAxis
-                          type="number"
-                          dataKey="timeImprovement"
-                          name="Zeitverbesserung"
-                          label={{ value: "Zeitverbesserung (%)", position: "bottom", offset: 20 }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis
-                          type="number"
-                          dataKey="accuracyChange"
-                          name="Genauigkeitsänderung"
-                          label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip
-                          formatter={(value, name, payload: Payload[]) => [Number(value).toFixed(2) + "%", name]}
-                          labelFormatter={(value, name, payload: Payload[]) =>
-                            `Teilnehmer: ${payload[0]?.payload?.nickname || "Unknown"}`
-                          }
-                          cursor={{ strokeDasharray: "3 3" }}
-                        />
-                        <Legend
-                          layout="horizontal"
-                          verticalAlign="top"
-                          align="center"
-                          wrapperStyle={{ paddingBottom: "20px" }}
-                        />
-                        <Scatter
-                          name="Gruppe 1 (Skimming)"
-                          data={individualData.filter((d) => d.testGroup === 1)}
-                          fill="#4f46e5"
-                        />
-                        <Scatter
-                          name="Gruppe 2 (Zeiger)"
-                          data={individualData.filter((d) => d.testGroup === 2)}
-                          fill="#10b981"
-                        />
-                        <Scatter
-                          name="Gruppe 3 (Subvokalisierung)"
-                          data={individualData.filter((d) => d.testGroup === 3)}
-                          fill="#f59e0b"
-                        />
-                      </ScatterChart>
-                    </ResponsiveContainer>
+                    {individualData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
+                          <CartesianGrid />
+                          <XAxis
+                            type="number"
+                            dataKey="timeImprovement"
+                            name="Zeitverbesserung"
+                            label={{ value: "Zeitverbesserung (%)", position: "bottom", offset: 20 }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="accuracyChange"
+                            name="Genauigkeitsänderung"
+                            label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip
+                            formatter={(value, name, payload: Payload[]) => [Number(value).toFixed(2) + "%", name]}
+                            labelFormatter={(value, name, payload: Payload[]) =>
+                              `Teilnehmer: ${payload[0]?.payload?.nickname || "Unknown"}`
+                            }
+                            cursor={{ strokeDasharray: "3 3" }}
+                          />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Scatter
+                            name="Gruppe 1 (Skimming)"
+                            data={individualData.filter((d) => d.testGroup === 1)}
+                            fill="#4f46e5"
+                          />
+                          <Scatter
+                            name="Gruppe 2 (Zeiger)"
+                            data={individualData.filter((d) => d.testGroup === 2)}
+                            fill="#10b981"
+                          />
+                          <Scatter
+                            name="Gruppe 3 (Subvokalisierung)"
+                            data={individualData.filter((d) => d.testGroup === 3)}
+                            fill="#f59e0b"
+                          />
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <p>Keine Daten verfügbar für dieses Diagramm (individualData: {individualData.length})</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
