@@ -80,6 +80,7 @@ export default function AdminDashboard() {
   const [individualData, setIndividualData] = useState([])
   const [avgTimeData, setAvgTimeData] = useState([])
   const [avgErrorData, setAvgErrorData] = useState([])
+  const [debugInfo, setDebugInfo] = useState("")
 
   // Refs for chart containers
   const scatterChartRef = useRef<HTMLDivElement>(null)
@@ -134,13 +135,35 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     setLoading(true)
     setDataReady(false)
+    setDebugInfo("")
+    
     try {
+      let debugLog = "Starting data fetch...\n"
+      
       // Fetch all results from the flat collection for backward compatibility
       const resultsSnapshot = await getDocs(collection(db, "reading_study_results"))
       const resultsData: Result[] = []
       resultsSnapshot.forEach((doc) => {
-        resultsData.push({ id: doc.id, ...doc.data() } as Result)
+        const data = doc.data()
+        // Validate the data structure
+        if (data.sessionId && data.nickname && typeof data.phase === 'number') {
+          resultsData.push({ 
+            id: doc.id, 
+            sessionId: data.sessionId,
+            nickname: data.nickname,
+            phase: Number(data.phase),
+            readingTime: Number(data.readingTime) || 0,
+            score: Number(data.score) || 0,
+            totalQuestions: Number(data.totalQuestions) || 10,
+            timestamp: data.timestamp,
+            testGroup: Number(data.testGroup) || 1,
+            mistakeRatio: Number(data.mistakeRatio) || 0,
+            technique: data.technique || "Unknown"
+          } as Result)
+        }
       })
+
+      debugLog += `Found ${resultsData.length} results in reading_study_results collection\n`
 
       // Fetch user data with their results
       const usersSnapshot = await getDocs(collection(db, "users"))
@@ -156,11 +179,11 @@ export default function AdminDashboard() {
 
         resultsSnapshot.forEach((resultDoc) => {
           const resultData = resultDoc.data()
-          if (resultDoc.id === "phase1") {
+          if (resultDoc.id === "phase1" && resultData.readingTime !== undefined) {
             userData.results.phase1 = {
-              readingTime: resultData.readingTime,
-              score: resultData.score,
-              mistakeRatio: resultData.mistakeRatio,
+              readingTime: Number(resultData.readingTime) || 0,
+              score: Number(resultData.score) || 0,
+              mistakeRatio: Number(resultData.mistakeRatio) || 0,
             }
             // Add to results array for chart compatibility
             additionalResults.push({
@@ -168,19 +191,19 @@ export default function AdminDashboard() {
               sessionId: userDoc.id,
               nickname: userData.nickname,
               phase: 1,
-              readingTime: resultData.readingTime,
-              score: resultData.score,
-              totalQuestions: resultData.totalQuestions || 10,
+              readingTime: Number(resultData.readingTime) || 0,
+              score: Number(resultData.score) || 0,
+              totalQuestions: Number(resultData.totalQuestions) || 10,
               timestamp: resultData.timestamp,
-              testGroup: userData.testGroup,
-              mistakeRatio: resultData.mistakeRatio,
+              testGroup: Number(userData.testGroup) || 1,
+              mistakeRatio: Number(resultData.mistakeRatio) || 0,
               technique: "Normales Lesen",
             })
-          } else if (resultDoc.id === "phase2") {
+          } else if (resultDoc.id === "phase2" && resultData.readingTime !== undefined) {
             userData.results.phase2 = {
-              readingTime: resultData.readingTime,
-              score: resultData.score,
-              mistakeRatio: resultData.mistakeRatio,
+              readingTime: Number(resultData.readingTime) || 0,
+              score: Number(resultData.score) || 0,
+              mistakeRatio: Number(resultData.mistakeRatio) || 0,
             }
             // Add to results array for chart compatibility
             additionalResults.push({
@@ -188,32 +211,59 @@ export default function AdminDashboard() {
               sessionId: userDoc.id,
               nickname: userData.nickname,
               phase: 2,
-              readingTime: resultData.readingTime,
-              score: resultData.score,
-              totalQuestions: resultData.totalQuestions || 10,
+              readingTime: Number(resultData.readingTime) || 0,
+              score: Number(resultData.score) || 0,
+              totalQuestions: Number(resultData.totalQuestions) || 10,
               timestamp: resultData.timestamp,
-              testGroup: userData.testGroup,
-              mistakeRatio: resultData.mistakeRatio,
-              technique: userData.technique,
+              testGroup: Number(userData.testGroup) || 1,
+              mistakeRatio: Number(resultData.mistakeRatio) || 0,
+              technique: userData.technique || "Unknown",
             })
           }
         })
 
-        usersData.push(userData)
+        // Only add users that have both phase1 and phase2 results
+        if (userData.results.phase1 && userData.results.phase2) {
+          usersData.push(userData)
+        }
       }
+
+      debugLog += `Found ${usersData.length} users with complete data\n`
+      debugLog += `Found ${additionalResults.length} additional results from user subcollections\n`
 
       // Combine both result sources
       const allResults = [...resultsData, ...additionalResults]
-      setResults(allResults)
+      
+      // Remove duplicates based on sessionId and phase
+      const uniqueResults = allResults.filter((result, index, self) => 
+        index === self.findIndex(r => r.sessionId === result.sessionId && r.phase === result.phase)
+      )
+      
+      debugLog += `Total unique results: ${uniqueResults.length}\n`
+      
+      // Validate that we have data
+      if (uniqueResults.length === 0) {
+        debugLog += "WARNING: No valid results found!\n"
+        setDebugInfo(debugLog)
+        setResults([])
+        setUserData([])
+        setDataReady(true)
+        setLoading(false)
+        return
+      }
+
+      setResults(uniqueResults)
       setUserData(usersData)
       setDataReady(true)
+      setDebugInfo(debugLog)
 
-      console.log("Fetched results:", allResults.length)
+      console.log("Fetched results:", uniqueResults.length)
       console.log("Fetched users:", usersData.length)
       console.log("Sample userData:", usersData.slice(0, 2))
-      console.log("Sample results:", allResults.slice(0, 2))
+      console.log("Sample results:", uniqueResults.slice(0, 2))
     } catch (error) {
       console.error("Error fetching data:", error)
+      setDebugInfo(`Error fetching data: ${error.message}`)
     }
     setLoading(false)
   }
@@ -397,40 +447,66 @@ export default function AdminDashboard() {
   // Prepare data functions
   const prepareTimeVsMistakeData = () => {
     if (!results || results.length === 0) {
+      console.log("No results available for time vs mistake chart")
       return []
     }
 
-    const normalReadingData = results
+    // Filter out invalid data
+    const validResults = results.filter(r => 
+      r && 
+      typeof r.readingTime === 'number' && 
+      r.readingTime > 0 && 
+      typeof r.mistakeRatio === 'number' && 
+      r.mistakeRatio >= 0
+    )
+
+    console.log(`Valid results for chart: ${validResults.length} out of ${results.length}`)
+
+    const normalReadingData = validResults
       .filter((r) => r.phase === 1)
       .map((r) => ({
-        readingTime: Number(r.readingTime) || 0,
-        mistakeRatio: Number(r.mistakeRatio) || 0,
+        readingTime: Number(r.readingTime),
+        mistakeRatio: Number(r.mistakeRatio),
         type: "Normales Lesen",
       }))
 
-    const speedReadingData = results
+    const speedReadingData = validResults
       .filter((r) => r.phase === 2)
       .map((r) => ({
-        readingTime: Number(r.readingTime) || 0,
-        mistakeRatio: Number(r.mistakeRatio) || 0,
+        readingTime: Number(r.readingTime),
+        mistakeRatio: Number(r.mistakeRatio),
         type: "Schnelllesen",
       }))
 
-    return [...normalReadingData, ...speedReadingData]
+    const combinedData = [...normalReadingData, ...speedReadingData]
+    console.log(`Chart data: ${normalReadingData.length} normal, ${speedReadingData.length} speed reading`)
+    
+    return combinedData
   }
 
   const prepareTestGroupData = () => {
     if (!userData || userData.length === 0) {
+      console.log("No user data available for test group chart")
       return []
     }
 
-    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+    const validUsers = userData.filter((user) => 
+      user.results?.phase1 && 
+      user.results?.phase2 &&
+      typeof user.results.phase1.readingTime === 'number' &&
+      typeof user.results.phase2.readingTime === 'number' &&
+      user.results.phase1.readingTime > 0 &&
+      user.results.phase2.readingTime > 0
+    )
+
+    console.log(`Valid users for test group chart: ${validUsers.length} out of ${userData.length}`)
 
     if (validUsers.length === 0) {
+      console.log("No valid users with complete data")
       return []
     }
 
-    const groupData = {}
+    const groupData: any = {}
 
     // Initialize with empty arrays
     for (let i = 1; i <= 3; i++) {
@@ -450,15 +526,15 @@ export default function AdminDashboard() {
     // Process user data
     validUsers.forEach((user) => {
       const group = Number(user.testGroup)
-      if (!groupData[group]) return
+      if (!groupData[group] || group < 1 || group > 3) return
 
       const phase1 = user.results.phase1
       const phase2 = user.results.phase2
 
-      groupData[group].normalReadingTime += Number(phase1.readingTime) || 0
-      groupData[group].speedReadingTime += Number(phase2.readingTime) || 0
-      groupData[group].normalMistakeRatio += Number(phase1.mistakeRatio) || 0
-      groupData[group].speedMistakeRatio += Number(phase2.mistakeRatio) || 0
+      groupData[group].normalReadingTime += Number(phase1.readingTime)
+      groupData[group].speedReadingTime += Number(phase2.readingTime)
+      groupData[group].normalMistakeRatio += Number(phase1.mistakeRatio)
+      groupData[group].speedMistakeRatio += Number(phase2.mistakeRatio)
       groupData[group].count++
     })
 
@@ -470,12 +546,20 @@ export default function AdminDashboard() {
         data.speedReadingTime /= data.count
         data.normalMistakeRatio /= data.count
         data.speedMistakeRatio /= data.count
-        data.timeImprovement = ((data.normalReadingTime - data.speedReadingTime) / data.normalReadingTime) * 100
-        data.accuracyChange = ((data.normalMistakeRatio - data.speedMistakeRatio) / data.normalMistakeRatio) * 100
+        
+        // Calculate improvements with safety checks
+        if (data.normalReadingTime > 0) {
+          data.timeImprovement = ((data.normalReadingTime - data.speedReadingTime) / data.normalReadingTime) * 100
+        }
+        if (data.normalMistakeRatio > 0) {
+          data.accuracyChange = ((data.normalMistakeRatio - data.speedMistakeRatio) / data.normalMistakeRatio) * 100
+        }
       }
     })
 
-    return Object.values(groupData).filter((d) => d.count > 0)
+    const result = Object.values(groupData).filter((d: any) => d.count > 0)
+    console.log(`Test group data prepared: ${result.length} groups with data`)
+    return result
   }
 
   const prepareIndividualImprovementData = () => {
@@ -514,17 +598,30 @@ export default function AdminDashboard() {
 
   const prepareAverageTimeData = () => {
     if (!userData || userData.length === 0) {
+      console.log("No user data available for average time chart")
       return []
     }
 
-    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+    const validUsers = userData.filter((user) => 
+      user.results?.phase1 && 
+      user.results?.phase2 &&
+      typeof user.results.phase1.readingTime === 'number' &&
+      typeof user.results.phase2.readingTime === 'number' &&
+      user.results.phase1.readingTime > 0 &&
+      user.results.phase2.readingTime > 0
+    )
+
+    console.log(`Valid users for average time chart: ${validUsers.length} out of ${userData.length}`)
 
     if (validUsers.length === 0) {
+      console.log("No valid users with complete data for average time")
       return []
     }
 
-    const avgNormalTime = validUsers.reduce((acc, u) => acc + u.results.phase1.readingTime, 0) / validUsers.length
-    const avgSpeedTime = validUsers.reduce((acc, u) => acc + u.results.phase2.readingTime, 0) / validUsers.length
+    const avgNormalTime = validUsers.reduce((acc, u) => acc + Number(u.results.phase1.readingTime), 0) / validUsers.length
+    const avgSpeedTime = validUsers.reduce((acc, u) => acc + Number(u.results.phase2.readingTime), 0) / validUsers.length
+
+    console.log(`Average times: Normal=${avgNormalTime.toFixed(1)}s, Speed=${avgSpeedTime.toFixed(1)}s`)
 
     return [
       {
@@ -537,17 +634,28 @@ export default function AdminDashboard() {
 
   const prepareAverageErrorData = () => {
     if (!userData || userData.length === 0) {
+      console.log("No user data available for average error chart")
       return []
     }
 
-    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
+    const validUsers = userData.filter((user) => 
+      user.results?.phase1 && 
+      user.results?.phase2 &&
+      typeof user.results.phase1.mistakeRatio === 'number' &&
+      typeof user.results.phase2.mistakeRatio === 'number'
+    )
+
+    console.log(`Valid users for average error chart: ${validUsers.length} out of ${userData.length}`)
 
     if (validUsers.length === 0) {
+      console.log("No valid users with complete data for average error")
       return []
     }
 
-    const avgNormalError = validUsers.reduce((acc, u) => acc + u.results.phase1.mistakeRatio, 0) / validUsers.length
-    const avgSpeedError = validUsers.reduce((acc, u) => acc + u.results.phase2.mistakeRatio, 0) / validUsers.length
+    const avgNormalError = validUsers.reduce((acc, u) => acc + Number(u.results.phase1.mistakeRatio), 0) / validUsers.length
+    const avgSpeedError = validUsers.reduce((acc, u) => acc + Number(u.results.phase2.mistakeRatio), 0) / validUsers.length
+
+    console.log(`Average errors: Normal=${(avgNormalError * 100).toFixed(1)}%, Speed=${(avgSpeedError * 100).toFixed(1)}%`)
 
     return [
       {
@@ -701,6 +809,28 @@ export default function AdminDashboard() {
               </Button>
             </div>
           </div>
+          
+          {/* Debug Information */}
+          {debugInfo && (
+            <Card className="border-0 shadow-lg overflow-hidden mb-4">
+              <CardHeader className="bg-gradient-to-r from-yellow-600 to-orange-600 text-white">
+                <CardTitle className="text-lg sm:text-xl">Debug Information</CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-6">
+                <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-32">
+                  {debugInfo}
+                </pre>
+                <div className="mt-2 text-sm text-gray-600">
+                  <p>Results: {results.length}</p>
+                  <p>Users: {userData.length}</p>
+                  <p>Time vs Mistake Data: {timeVsMistakeData.length}</p>
+                  <p>Test Group Data: {testGroupData.length}</p>
+                  <p>Average Time Data: {avgTimeData.length}</p>
+                  <p>Average Error Data: {avgErrorData.length}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
         {userData.length > 0 ? (
           <Tabs defaultValue="overview" className="space-y-6 sm:space-y-8">
@@ -765,43 +895,49 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-3 sm:p-6">
                   <div ref={scatterChartRef} className="h-[300px] sm:h-[500px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          type="number"
-                          dataKey="readingTime"
-                          name="Lesezeit"
-                          label={{ value: "Lesezeit (Sekunden)", position: "bottom", offset: 20 }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis
-                          type="number"
-                          dataKey="mistakeRatio"
-                          name="Fehlerquote"
-                          label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <ZAxis range={[60, 60]} />
-                        <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                        <Legend
-                          layout="horizontal"
-                          verticalAlign="top"
-                          align="center"
-                          wrapperStyle={{ paddingBottom: "20px" }}
-                        />
-                        <Scatter
-                          name="Normales Lesen"
-                          data={timeVsMistakeData.filter((d) => d.type === "Normales Lesen")}
-                          fill="#4f46e5"
-                        />
-                        <Scatter
-                          name="Schnelllesen"
-                          data={timeVsMistakeData.filter((d) => d.type === "Schnelllesen")}
-                          fill="#10b981"
-                        />
-                      </ScatterChart>
-                    </ResponsiveContainer>
+                    {timeVsMistakeData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            type="number"
+                            dataKey="readingTime"
+                            name="Lesezeit"
+                            label={{ value: "Lesezeit (Sekunden)", position: "bottom", offset: 20 }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="mistakeRatio"
+                            name="Fehlerquote"
+                            label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <ZAxis range={[60, 60]} />
+                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                          <Legend
+                            layout="horizontal"
+                            verticalAlign="top"
+                            align="center"
+                            wrapperStyle={{ paddingBottom: "20px" }}
+                          />
+                          <Scatter
+                            name="Normales Lesen"
+                            data={timeVsMistakeData.filter((d) => d.type === "Normales Lesen")}
+                            fill="#4f46e5"
+                          />
+                          <Scatter
+                            name="Schnelllesen"
+                            data={timeVsMistakeData.filter((d) => d.type === "Schnelllesen")}
+                            fill="#10b981"
+                          />
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <p>Keine Daten verfügbar für dieses Diagramm</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -840,26 +976,32 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="p-3 sm:p-6">
                     <div ref={avgTimeChartRef} className="h-[250px] sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={avgTimeData} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            type="number"
-                            label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
-                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Bar dataKey="Normales Lesen" fill="#4f46e5" />
-                          <Bar dataKey="Schnelllesen" fill="#10b981" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      {avgTimeData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={avgTimeData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              type="number"
+                              label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
+                            <Legend
+                              layout="horizontal"
+                              verticalAlign="top"
+                              align="center"
+                              wrapperStyle={{ paddingBottom: "20px" }}
+                            />
+                            <Bar dataKey="Normales Lesen" fill="#4f46e5" />
+                            <Bar dataKey="Schnelllesen" fill="#10b981" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          <p>Keine Daten verfügbar für dieses Diagramm</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -897,26 +1039,32 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="p-3 sm:p-6">
                     <div ref={avgErrorChartRef} className="h-[250px] sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={avgErrorData} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            type="number"
-                            label={{ value: "Fehlerquote", position: "bottom", offset: 0 }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
-                          <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Bar dataKey="Normales Lesen" fill="#4f46e5" />
-                          <Bar dataKey="Schnelllesen" fill="#10b981" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      {avgErrorData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={avgErrorData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              type="number"
+                              label={{ value: "Fehlerquote", position: "bottom", offset: 0 }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
+                            <Legend
+                              layout="horizontal"
+                              verticalAlign="top"
+                              align="center"
+                              wrapperStyle={{ paddingBottom: "20px" }}
+                            />
+                            <Bar dataKey="Normales Lesen" fill="#4f46e5" />
+                            <Bar dataKey="Schnelllesen" fill="#10b981" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          <p>Keine Daten verfügbar für dieses Diagramm</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
