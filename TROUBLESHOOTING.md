@@ -14,7 +14,7 @@ The graphs and statistics in the admin tab are not showing any data, even though
 - Check the console output for data validation results
 
 **Expected data structure:**
-```javascript
+\`\`\`javascript
 // reading_study_results collection
 {
   sessionId: "string",
@@ -45,20 +45,20 @@ users/{userId}/results/phase2 = {
   score: number,
   mistakeRatio: number
 }
-```
+\`\`\`
 
 ### 2. Environment Variables
 
 **Check if Firebase is properly configured:**
 - Verify that all Firebase environment variables are set in `.env.local`:
-  ```
+  \`\`\`
   NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-  ```
+  \`\`\`
 
 ### 3. Data Validation Issues
 
@@ -119,4 +119,4 @@ The admin page now includes:
 - Validation checks for chart data
 - Error messages for missing or invalid data
 
-If the issue persists, check the browser console for detailed error messages and the debug information panel for data validation results. 
+If the issue persists, check the browser console for detailed error messages and the debug information panel for data validation results.

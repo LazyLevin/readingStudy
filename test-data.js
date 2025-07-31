@@ -92,4 +92,4 @@ async function testFirebaseData() {
 }
 
 // Export for use in browser console
-window.testFirebaseData = testFirebaseData; 
+window.testFirebaseData = testFirebaseData;

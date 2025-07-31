@@ -2,1500 +2,711 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } from "firebase/auth"
+import { collection, getDocs } from "firebase/firestore"
+import { auth, db, isFirebaseAvailable, mockData } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs } from "firebase/firestore"
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth"
-import { db, auth } from "@/lib/firebase"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "@/hooks/use-toast"
+import { Toaster } from "@/components/ui/toaster"
+import { AlertCircle, Download, LogOut, BarChart3, Users, TrendingUp } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
+
+// Chart.js imports
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  ZAxis,
-} from "recharts"
-import type { Payload } from "recharts/types/component/Tooltip"
-import { LogOut, Download, FileImage, FileText } from "lucide-react"
-import html2canvas from "html2canvas"
-import jsPDF from "jspdf"
+  ArcElement,
+} from "chart.js"
+import { Scatter, Bar, Pie } from "react-chartjs-2"
 
-type Result = {
-  id: string
-  sessionId: string
-  nickname: string
-  phase: number
-  readingTime: number
-  score: number
-  totalQuestions: number
-  timestamp: any
-  testGroup: number
-  mistakeRatio: number
-  technique: string
+// Register Chart.js components
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement)
+
+interface Participant {
+  id?: string
+  name: string
+  age: number
+  technique: "speed_reading" | "normal_reading"
+  preReadingTime: number
+  postReadingTime: number
+  preErrorRate: number
+  postErrorRate: number
+  timestamp: Date
 }
 
-type UserData = {
-  id: string
-  nickname: string
-  testGroup: number
-  technique: string
-  createdAt: any
-  results?: {
-    phase1?: {
-      readingTime: number
-      score: number
-      mistakeRatio: number
-    }
-    phase2?: {
-      readingTime: number
-      score: number
-      mistakeRatio: number
-    }
-  }
-}
+export default function AdminPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loginData, setLoginData] = useState({ email: "", password: "" })
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [firebaseStatus, setFirebaseStatus] = useState<"checking" | "available" | "unavailable">("checking")
 
-export default function AdminDashboard() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [authenticated, setAuthenticated] = useState(false)
-  const [user, setUser] = useState(null)
-  const [results, setResults] = useState<Result[]>([])
-  const [userData, setUserData] = useState<UserData[]>([])
-  const [loading, setLoading] = useState(false)
-  const [authLoading, setAuthLoading] = useState(true)
-  const [loginError, setLoginError] = useState("")
-  const [exportingCharts, setExportingCharts] = useState(false)
-  const [dataReady, setDataReady] = useState(false)
-  const [timeVsMistakeData, setTimeVsMistakeData] = useState([])
-  const [testGroupData, setTestGroupData] = useState([])
-  const [individualData, setIndividualData] = useState([])
-  const [avgTimeData, setAvgTimeData] = useState([])
-  const [avgErrorData, setAvgErrorData] = useState([])
-  const [debugInfo, setDebugInfo] = useState("")
-
-  // Refs for chart containers
-  const scatterChartRef = useRef<HTMLDivElement>(null)
-  const avgTimeChartRef = useRef<HTMLDivElement>(null)
-  const avgErrorChartRef = useRef<HTMLDivElement>(null)
-  const techniqueComparisonRef = useRef<HTMLDivElement>(null)
-  const timeByTechniqueRef = useRef<HTMLDivElement>(null)
-  const errorByTechniqueRef = useRef<HTMLDivElement>(null)
-  const individualImprovementRef = useRef<HTMLDivElement>(null)
-
-  // Check authentication state on component mount
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthenticated(true)
-        setUser(user)
-        fetchData()
-      } else {
-        setAuthenticated(false)
-        setUser(null)
-      }
-      setAuthLoading(false)
-    })
-
-    return () => unsubscribe()
+    checkFirebaseAndSetupAuth()
   }, [])
 
-  const handleLogin = async () => {
-    setLoginError("")
-    setAuthLoading(true)
+  useEffect(() => {
+    if (user) {
+      loadParticipants()
+    }
+  }, [user])
+
+  const checkFirebaseAndSetupAuth = async () => {
+    try {
+      if (isFirebaseAvailable()) {
+        setFirebaseStatus("available")
+        const unsubscribe = onAuthStateChanged(auth!, (user) => {
+          setUser(user)
+          setLoading(false)
+        })
+        return () => unsubscribe()
+      } else {
+        setFirebaseStatus("unavailable")
+        setLoading(false)
+        // In demo mode, simulate being logged in
+        setUser({ email: "demo@example.com" } as User)
+        setParticipants(mockData.participants)
+      }
+    } catch (error) {
+      console.error("Error setting up auth:", error)
+      setFirebaseStatus("unavailable")
+      setLoading(false)
+      setUser({ email: "demo@example.com" } as User)
+      setParticipants(mockData.participants)
+    }
+  }
+
+  const loadParticipants = async () => {
+    if (!isFirebaseAvailable()) {
+      setParticipants(mockData.participants)
+      return
+    }
 
     try {
-      await signInWithEmailAndPassword(auth, email, password)
-      // Authentication state will be handled by onAuthStateChanged
-    } catch (error: any) {
+      const querySnapshot = await getDocs(collection(db!, "participants"))
+      const participantData: Participant[] = []
+      querySnapshot.forEach((doc) => {
+        const data = doc.data()
+        participantData.push({
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp?.toDate() || new Date(),
+        } as Participant)
+      })
+      setParticipants(participantData)
+    } catch (error) {
+      console.error("Error loading participants:", error)
+      setParticipants(mockData.participants)
+      toast({
+        title: "Error",
+        description: "Failed to load data. Using sample data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!isFirebaseAvailable()) {
+      toast({
+        title: "Demo Mode",
+        description: "Logged in with demo credentials",
+      })
+      setUser({ email: "demo@example.com" } as User)
+      return
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth!, loginData.email, loginData.password)
+      toast({
+        title: "Success",
+        description: "Logged in successfully",
+      })
+    } catch (error) {
       console.error("Login error:", error)
-      setLoginError("Ungültige Anmeldedaten. Bitte versuchen Sie es erneut.")
-      setAuthLoading(false)
+      toast({
+        title: "Error",
+        description: "Invalid credentials",
+        variant: "destructive",
+      })
     }
   }
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth)
-      setResults([])
-      setUserData([])
-    } catch (error) {
-      console.error("Logout error:", error)
-    }
-  }
-
-  const fetchData = async () => {
-    setLoading(true)
-    setDataReady(false)
-    setDebugInfo("")
-    
-    try {
-      let debugLog = "Starting data fetch...\n"
-      
-      // Fetch all results from the flat collection for backward compatibility
-      const resultsSnapshot = await getDocs(collection(db, "reading_study_results"))
-      const resultsData: Result[] = []
-      resultsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        // Validate the data structure
-        if (data.sessionId && data.nickname && typeof data.phase === 'number') {
-          resultsData.push({ 
-            id: doc.id, 
-            sessionId: data.sessionId,
-            nickname: data.nickname,
-            phase: Number(data.phase),
-            readingTime: Number(data.readingTime) || 0,
-            score: Number(data.score) || 0,
-            totalQuestions: Number(data.totalQuestions) || 10,
-            timestamp: data.timestamp,
-            testGroup: Number(data.testGroup) || 1,
-            mistakeRatio: Number(data.mistakeRatio) || 0,
-            technique: data.technique || "Unknown"
-          } as Result)
-        }
-      })
-
-      debugLog += `Found ${resultsData.length} results in reading_study_results collection\n`
-
-      // Fetch user data with their results
-      const usersSnapshot = await getDocs(collection(db, "users"))
-      const usersData: UserData[] = []
-      const additionalResults: Result[] = []
-
-      for (const userDoc of usersSnapshot.docs) {
-        const userData = { id: userDoc.id, ...userDoc.data() } as UserData
-
-        // Fetch results for this user
-        const resultsSnapshot = await getDocs(collection(db, "users", userDoc.id, "results"))
-        userData.results = {}
-
-        resultsSnapshot.forEach((resultDoc) => {
-          const resultData = resultDoc.data()
-          if (resultDoc.id === "phase1" && resultData.readingTime !== undefined) {
-            userData.results.phase1 = {
-              readingTime: Number(resultData.readingTime) || 0,
-              score: Number(resultData.score) || 0,
-              mistakeRatio: Number(resultData.mistakeRatio) || 0,
-            }
-            // Add to results array for chart compatibility
-            additionalResults.push({
-              id: `${userDoc.id}_phase1`,
-              sessionId: userDoc.id,
-              nickname: userData.nickname,
-              phase: 1,
-              readingTime: Number(resultData.readingTime) || 0,
-              score: Number(resultData.score) || 0,
-              totalQuestions: Number(resultData.totalQuestions) || 10,
-              timestamp: resultData.timestamp,
-              testGroup: Number(userData.testGroup) || 1,
-              mistakeRatio: Number(resultData.mistakeRatio) || 0,
-              technique: "Normales Lesen",
-            })
-          } else if (resultDoc.id === "phase2" && resultData.readingTime !== undefined) {
-            userData.results.phase2 = {
-              readingTime: Number(resultData.readingTime) || 0,
-              score: Number(resultData.score) || 0,
-              mistakeRatio: Number(resultData.mistakeRatio) || 0,
-            }
-            // Add to results array for chart compatibility
-            additionalResults.push({
-              id: `${userDoc.id}_phase2`,
-              sessionId: userDoc.id,
-              nickname: userData.nickname,
-              phase: 2,
-              readingTime: Number(resultData.readingTime) || 0,
-              score: Number(resultData.score) || 0,
-              totalQuestions: Number(resultData.totalQuestions) || 10,
-              timestamp: resultData.timestamp,
-              testGroup: Number(userData.testGroup) || 1,
-              mistakeRatio: Number(resultData.mistakeRatio) || 0,
-              technique: userData.technique || "Unknown",
-            })
-          }
-        })
-
-        // Only add users that have both phase1 and phase2 results
-        if (userData.results.phase1 && userData.results.phase2) {
-          usersData.push(userData)
-        }
+    if (isFirebaseAvailable()) {
+      try {
+        await signOut(auth!)
+      } catch (error) {
+        console.error("Logout error:", error)
       }
-
-      debugLog += `Found ${usersData.length} users with complete data\n`
-      debugLog += `Found ${additionalResults.length} additional results from user subcollections\n`
-
-      // Combine both result sources
-      const allResults = [...resultsData, ...additionalResults]
-      
-      // Remove duplicates based on sessionId and phase
-      const uniqueResults = allResults.filter((result, index, self) => 
-        index === self.findIndex(r => r.sessionId === result.sessionId && r.phase === result.phase)
-      )
-      
-      debugLog += `Total unique results: ${uniqueResults.length}\n`
-      
-      // Validate that we have data
-      if (uniqueResults.length === 0) {
-        debugLog += "WARNING: No valid results found!\n"
-        setDebugInfo(debugLog)
-        setResults([])
-        setUserData([])
-        setDataReady(true)
-        setLoading(false)
-        return
-      }
-
-      setResults(uniqueResults)
-      setUserData(usersData)
-      setDataReady(true)
-      setDebugInfo(debugLog)
-
-      console.log("Fetched results:", uniqueResults.length)
-      console.log("Fetched users:", usersData.length)
-      console.log("Sample userData:", usersData.slice(0, 2))
-      console.log("Sample results:", uniqueResults.slice(0, 2))
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setDebugInfo(`Error fetching data: ${error.message}`)
+    } else {
+      setUser(null)
     }
-    setLoading(false)
+
+    toast({
+      title: "Success",
+      description: "Logged out successfully",
+    })
   }
 
-  const downloadCSV = () => {
-    // Create CSV content
-    const headers = [
-      "Spitzname",
-      "Testgruppe",
-      "Technik",
-      "Phase 1 Lesezeit (s)",
-      "Phase 1 Punkte",
-      "Phase 1 Fehlerquote",
-      "Phase 2 Lesezeit (s)",
-      "Phase 2 Punkte",
-      "Phase 2 Fehlerquote",
-      "Zeitverbesserung (%)",
-      "Genauigkeitsänderung (%)",
-    ]
-    const csvRows = [headers]
-
-    userData
-      .filter((user) => user.results?.phase1 && user.results?.phase2)
-      .forEach((user) => {
-        const phase1 = user.results.phase1
-        const phase2 = user.results.phase2
-        const timeImprovement = ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
-        const accuracyChange = ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
-
-        const row = [
-          user.nickname,
-          user.testGroup,
-          user.technique,
-          phase1.readingTime.toFixed(1),
-          phase1.score,
-          phase1.mistakeRatio.toFixed(2),
-          phase2.readingTime.toFixed(1),
-          phase2.score,
-          phase2.mistakeRatio.toFixed(2),
-          timeImprovement.toFixed(1),
-          accuracyChange.toFixed(1),
-        ]
-        csvRows.push(row)
-      })
-
-    const csvContent = csvRows.map((row) => row.join(",")).join("\n")
-
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.setAttribute("hidden", "")
-    a.setAttribute("href", url)
-    a.setAttribute("download", "reading_study_results.csv")
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-  }
-
-  const exportChartAsImage = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
-    if (!chartRef.current) return
-
-    try {
-      // Wait a bit for the chart to fully render
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const canvas = await html2canvas(chartRef.current, {
-        scale: 3, // High resolution for scientific papers
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: chartRef.current.offsetWidth,
-        height: chartRef.current.offsetHeight,
-      })
-
-      // Download as PNG
+  const exportToPNG = async (elementId: string, filename: string) => {
+    const element = document.getElementById(elementId)
+    if (element) {
+      const canvas = await html2canvas(element)
       const link = document.createElement("a")
       link.download = `${filename}.png`
-      link.href = canvas.toDataURL("image/png")
+      link.href = canvas.toDataURL()
       link.click()
-    } catch (error) {
-      console.error("Error exporting chart:", error)
     }
   }
 
-  const exportChartAsSVG = async (chartRef: React.RefObject<HTMLDivElement>, filename: string) => {
-    if (!chartRef.current) return
+  const exportToPDF = async () => {
+    const pdf = new jsPDF("p", "mm", "a4")
+    const elements = ["overview-charts", "technique-comparison", "individual-progress"]
 
-    try {
-      // Find the SVG element within the chart
-      const svgElement = chartRef.current.querySelector("svg")
-      if (!svgElement) {
-        console.error("No SVG found in chart")
-        return
+    for (let i = 0; i < elements.length; i++) {
+      const element = document.getElementById(elements[i])
+      if (element) {
+        const canvas = await html2canvas(element)
+        const imgData = canvas.toDataURL("image/png")
+
+        if (i > 0) pdf.addPage()
+
+        const imgWidth = 190
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight)
       }
-
-      // Clone the SVG to avoid modifying the original
-      const clonedSvg = svgElement.cloneNode(true) as SVGElement
-
-      // Set explicit dimensions and background
-      clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
-      clonedSvg.style.backgroundColor = "#ffffff"
-
-      // Serialize the SVG
-      const serializer = new XMLSerializer()
-      const svgString = serializer.serializeToString(clonedSvg)
-
-      // Create blob and download
-      const blob = new Blob([svgString], { type: "image/svg+xml" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.download = `${filename}.svg`
-      link.href = url
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error("Error exporting SVG:", error)
     }
+
+    pdf.save("reading-study-report.pdf")
   }
 
-  const exportAllChartsAsPDF = async () => {
-    setExportingCharts(true)
-
-    try {
-      const pdf = new jsPDF("l", "mm", "a4") // Landscape orientation for better chart visibility
-      const chartRefs = [
-        { ref: scatterChartRef, title: "Lesezeit vs. Fehlerquote" },
-        { ref: avgTimeChartRef, title: "Durchschnittliche Lesezeit" },
-        { ref: avgErrorChartRef, title: "Durchschnittliche Fehlerquote" },
-        { ref: techniqueComparisonRef, title: "Vergleich der Schnelllesetechniken" },
-        { ref: timeByTechniqueRef, title: "Lesezeit nach Technik" },
-        { ref: errorByTechniqueRef, title: "Fehlerquote nach Technik" },
-        { ref: individualImprovementRef, title: "Individuelle Verbesserung" },
-      ]
-
-      for (let i = 0; i < chartRefs.length; i++) {
-        const { ref, title } = chartRefs[i]
-
-        if (ref.current) {
-          // Wait for chart to render
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-
-          const canvas = await html2canvas(ref.current, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          })
-
-          const imgData = canvas.toDataURL("image/png")
-
-          if (i > 0) {
-            pdf.addPage()
-          }
-
-          // Add title
-          pdf.setFontSize(16)
-          pdf.text(title, 20, 20)
-
-          // Calculate dimensions to fit the page
-          const pageWidth = pdf.internal.pageSize.getWidth()
-          const pageHeight = pdf.internal.pageSize.getHeight()
-          const imgWidth = pageWidth - 40 // 20mm margin on each side
-          const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-          // Add image
-          pdf.addImage(imgData, "PNG", 20, 30, imgWidth, Math.min(imgHeight, pageHeight - 50))
-        }
-      }
-
-      pdf.save("lesestudie_diagramme.pdf")
-    } catch (error) {
-      console.error("Error creating PDF:", error)
-    } finally {
-      setExportingCharts(false)
-    }
-  }
-
-  // Prepare data functions
-  const prepareTimeVsMistakeData = () => {
-    if (!results || results.length === 0) {
-      console.log("No results available for time vs mistake chart")
-      return []
-    }
-
-    console.log("Preparing time vs mistake data with", results.length, "results")
-    console.log("Sample results:", results.slice(0, 3))
-
-    // Filter out invalid data
-    const validResults = results.filter(r => 
-      r && 
-      typeof r.readingTime === 'number' && 
-      r.readingTime > 0 && 
-      typeof r.mistakeRatio === 'number' && 
-      r.mistakeRatio >= 0
-    )
-
-    console.log(`Valid results for chart: ${validResults.length} out of ${results.length}`)
-
-    const normalReadingData = validResults
-      .filter((r) => r.phase === 1)
-      .map((r) => ({
-        readingTime: Number(r.readingTime),
-        mistakeRatio: Number(r.mistakeRatio),
-        type: "Normales Lesen",
-      }))
-
-    const speedReadingData = validResults
-      .filter((r) => r.phase === 2)
-      .map((r) => ({
-        readingTime: Number(r.readingTime),
-        mistakeRatio: Number(r.mistakeRatio),
-        type: "Schnelllesen",
-      }))
-
-    const combinedData = [...normalReadingData, ...speedReadingData]
-    console.log(`Chart data: ${normalReadingData.length} normal, ${speedReadingData.length} speed reading`)
-    console.log("Sample combined data:", combinedData.slice(0, 3))
-    
-    return combinedData
-  }
-
-  const prepareTestGroupData = () => {
-    if (!userData || userData.length === 0) {
-      console.log("No user data available for test group chart")
-      return []
-    }
-
-    console.log("Preparing test group data with", userData.length, "users")
-    console.log("Sample user data:", userData.slice(0, 2))
-
-    const validUsers = userData.filter((user) => 
-      user.results?.phase1 && 
-      user.results?.phase2 &&
-      typeof user.results.phase1.readingTime === 'number' &&
-      typeof user.results.phase2.readingTime === 'number' &&
-      user.results.phase1.readingTime > 0 &&
-      user.results.phase2.readingTime > 0
-    )
-
-    console.log(`Valid users for test group chart: ${validUsers.length} out of ${userData.length}`)
-
-    if (validUsers.length === 0) {
-      console.log("No valid users with complete data")
-      return []
-    }
-
-    const groupData: any = {}
-
-    // Initialize with empty arrays
-    for (let i = 1; i <= 3; i++) {
-      groupData[i] = {
-        group: i,
-        technique: ["Skimming-Technik", "Zeiger-Technik", "Subvokalisierung minimieren"][i - 1],
-        normalReadingTime: 0,
-        speedReadingTime: 0,
-        normalMistakeRatio: 0,
-        speedMistakeRatio: 0,
-        timeImprovement: 0,
-        accuracyChange: 0,
-        count: 0,
-      }
-    }
-
-    // Process user data
-    validUsers.forEach((user) => {
-      const group = Number(user.testGroup)
-      if (!groupData[group] || group < 1 || group > 3) return
-
-      const phase1 = user.results.phase1
-      const phase2 = user.results.phase2
-
-      groupData[group].normalReadingTime += Number(phase1.readingTime)
-      groupData[group].speedReadingTime += Number(phase2.readingTime)
-      groupData[group].normalMistakeRatio += Number(phase1.mistakeRatio)
-      groupData[group].speedMistakeRatio += Number(phase2.mistakeRatio)
-      groupData[group].count++
-    })
-
-    // Calculate averages and improvements
-    Object.keys(groupData).forEach((group) => {
-      const data = groupData[group]
-      if (data.count > 0) {
-        data.normalReadingTime /= data.count
-        data.speedReadingTime /= data.count
-        data.normalMistakeRatio /= data.count
-        data.speedMistakeRatio /= data.count
-        
-        // Calculate improvements with safety checks
-        if (data.normalReadingTime > 0) {
-          data.timeImprovement = ((data.normalReadingTime - data.speedReadingTime) / data.normalReadingTime) * 100
-        }
-        if (data.normalMistakeRatio > 0) {
-          data.accuracyChange = ((data.normalMistakeRatio - data.speedMistakeRatio) / data.normalMistakeRatio) * 100
-        }
-      }
-    })
-
-    const result = Object.values(groupData).filter((d: any) => d.count > 0)
-    console.log(`Test group data prepared: ${result.length} groups with data`)
-    console.log("Sample test group data:", result.slice(0, 2))
-    return result
-  }
-
-  const prepareIndividualImprovementData = () => {
-    if (!userData || userData.length === 0) {
-      console.log("No user data available for individual improvement chart")
-      return []
-    }
-
-    console.log("Preparing individual improvement data with", userData.length, "users")
-
-    const validUsers = userData.filter((user) => user.results?.phase1 && user.results?.phase2)
-
-    console.log(`Valid users for individual improvement chart: ${validUsers.length} out of ${userData.length}`)
-
-    const result = validUsers.map((user) => {
-      const phase1 = user.results.phase1
-      const phase2 = user.results.phase2
-      const timeImprovement =
-        ((Number(phase1.readingTime) - Number(phase2.readingTime)) / Number(phase1.readingTime)) * 100
-
-      // Handle division by zero for accuracy change
-      let accuracyChange = 0
-      if (Number(phase1.mistakeRatio) !== 0) {
-        accuracyChange =
-          ((Number(phase1.mistakeRatio) - Number(phase2.mistakeRatio)) / Number(phase1.mistakeRatio)) * 100
-      }
-
-      return {
-        nickname: user.nickname,
-        testGroup: Number(user.testGroup),
-        technique: user.technique,
-        normalTime: Number(phase1.readingTime),
-        speedTime: Number(phase2.readingTime),
-        normalMistakes: Number(phase1.mistakeRatio),
-        speedMistakes: Number(phase2.mistakeRatio),
-        timeImprovement: isFinite(timeImprovement) ? timeImprovement : 0,
-        accuracyChange: isFinite(accuracyChange) ? accuracyChange : 0,
-      }
-    })
-
-    console.log(`Individual improvement data prepared: ${result.length} users`)
-    console.log("Sample individual data:", result.slice(0, 2))
-    return result
-  }
-
-  const prepareAverageTimeData = () => {
-    if (!userData || userData.length === 0) {
-      console.log("No user data available for average time chart")
-      return []
-    }
-
-    console.log("Preparing average time data with", userData.length, "users")
-
-    const validUsers = userData.filter((user) => 
-      user.results?.phase1 && 
-      user.results?.phase2 &&
-      typeof user.results.phase1.readingTime === 'number' &&
-      typeof user.results.phase2.readingTime === 'number' &&
-      user.results.phase1.readingTime > 0 &&
-      user.results.phase2.readingTime > 0
-    )
-
-    console.log(`Valid users for average time chart: ${validUsers.length} out of ${userData.length}`)
-
-    if (validUsers.length === 0) {
-      console.log("No valid users with complete data for average time")
-      return []
-    }
-
-    const avgNormalTime = validUsers.reduce((acc, u) => acc + Number(u.results.phase1.readingTime), 0) / validUsers.length
-    const avgSpeedTime = validUsers.reduce((acc, u) => acc + Number(u.results.phase2.readingTime), 0) / validUsers.length
-
-    console.log(`Average times: Normal=${avgNormalTime.toFixed(1)}s, Speed=${avgSpeedTime.toFixed(1)}s`)
-
-    const result = [
+  // Chart data preparation
+  const scatterData = {
+    datasets: [
       {
-        name: "Lesezeit",
-        "Normales Lesen": avgNormalTime,
-        Schnelllesen: avgSpeedTime,
+        label: "Speed Reading",
+        data: participants
+          .filter((p) => p.technique === "speed_reading")
+          .map((p) => ({
+            x: p.preReadingTime,
+            y: p.preErrorRate,
+          })),
+        backgroundColor: "rgba(59, 130, 246, 0.6)",
+        borderColor: "rgba(59, 130, 246, 1)",
+        pointRadius: 6,
       },
-    ]
-    
-    console.log("Average time data prepared:", result)
-    return result
-  }
-
-  const prepareAverageErrorData = () => {
-    if (!userData || userData.length === 0) {
-      console.log("No user data available for average error chart")
-      return []
-    }
-
-    console.log("Preparing average error data with", userData.length, "users")
-
-    const validUsers = userData.filter((user) => 
-      user.results?.phase1 && 
-      user.results?.phase2 &&
-      typeof user.results.phase1.mistakeRatio === 'number' &&
-      typeof user.results.phase2.mistakeRatio === 'number'
-    )
-
-    console.log(`Valid users for average error chart: ${validUsers.length} out of ${userData.length}`)
-
-    if (validUsers.length === 0) {
-      console.log("No valid users with complete data for average error")
-      return []
-    }
-
-    const avgNormalError = validUsers.reduce((acc, u) => acc + Number(u.results.phase1.mistakeRatio), 0) / validUsers.length
-    const avgSpeedError = validUsers.reduce((acc, u) => acc + Number(u.results.phase2.mistakeRatio), 0) / validUsers.length
-
-    console.log(`Average errors: Normal=${(avgNormalError * 100).toFixed(1)}%, Speed=${(avgSpeedError * 100).toFixed(1)}%`)
-
-    const result = [
       {
-        name: "Fehlerquote",
-        "Normales Lesen": avgNormalError,
-        Schnelllesen: avgSpeedError,
+        label: "Normal Reading",
+        data: participants
+          .filter((p) => p.technique === "normal_reading")
+          .map((p) => ({
+            x: p.preReadingTime,
+            y: p.preErrorRate,
+          })),
+        backgroundColor: "rgba(239, 68, 68, 0.6)",
+        borderColor: "rgba(239, 68, 68, 1)",
+        pointRadius: 6,
       },
-    ]
-    
-    console.log("Average error data prepared:", result)
-    return result
+    ],
   }
 
-  useEffect(() => {
-    if (dataReady && results.length > 0) {
-      console.log("Preparing chart data...")
-      const timeVsMistake = prepareTimeVsMistakeData()
-      const testGroup = prepareTestGroupData()
-      const individual = prepareIndividualImprovementData()
-      const avgTime = prepareAverageTimeData()
-      const avgError = prepareAverageErrorData()
-      
-      console.log("Chart data prepared:", {
-        timeVsMistake: timeVsMistake.length,
-        testGroup: testGroup.length,
-        individual: individual.length,
-        avgTime: avgTime.length,
-        avgError: avgError.length
-      })
-      
-      setTimeVsMistakeData(timeVsMistake)
-      setTestGroupData(testGroup)
-      setIndividualData(individual)
-      setAvgTimeData(avgTime)
-      setAvgErrorData(avgError)
-    }
-  }, [dataReady, results, userData])
+  const scatterOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: "top" as const,
+      },
+      title: {
+        display: true,
+        text: "Reading Time vs Error Rate (Pre-Training)",
+      },
+    },
+    scales: {
+      x: {
+        display: true,
+        title: {
+          display: true,
+          text: "Reading Time (seconds)",
+        },
+        grid: {
+          display: true,
+        },
+      },
+      y: {
+        display: true,
+        title: {
+          display: true,
+          text: "Error Rate (%)",
+        },
+        grid: {
+          display: true,
+        },
+      },
+    },
+  }
 
-  // Show loading spinner while checking authentication
-  if (authLoading) {
+  const techniqueComparison = {
+    labels: ["Speed Reading", "Normal Reading"],
+    datasets: [
+      {
+        label: "Average Time Improvement (%)",
+        data: [
+          participants
+            .filter((p) => p.technique === "speed_reading")
+            .reduce((acc, p) => acc + ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100, 0) /
+            Math.max(participants.filter((p) => p.technique === "speed_reading").length, 1),
+          participants
+            .filter((p) => p.technique === "normal_reading")
+            .reduce((acc, p) => acc + ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100, 0) /
+            Math.max(participants.filter((p) => p.technique === "normal_reading").length, 1),
+        ],
+        backgroundColor: ["rgba(59, 130, 246, 0.6)", "rgba(239, 68, 68, 0.6)"],
+        borderColor: ["rgba(59, 130, 246, 1)", "rgba(239, 68, 68, 1)"],
+        borderWidth: 2,
+      },
+    ],
+  }
+
+  const barOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: "top" as const,
+      },
+      title: {
+        display: true,
+        text: "Technique Comparison - Average Improvement",
+      },
+    },
+    scales: {
+      x: {
+        display: true,
+        title: {
+          display: true,
+          text: "Reading Technique",
+        },
+        grid: {
+          display: true,
+        },
+      },
+      y: {
+        display: true,
+        title: {
+          display: true,
+          text: "Improvement (%)",
+        },
+        grid: {
+          display: true,
+        },
+        beginAtZero: true,
+      },
+    },
+  }
+
+  const progressData = {
+    datasets: [
+      {
+        label: "Individual Progress",
+        data: participants.map((p) => ({
+          x: ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100,
+          y: p.preErrorRate - p.postErrorRate,
+        })),
+        backgroundColor: participants.map((p) =>
+          p.technique === "speed_reading" ? "rgba(59, 130, 246, 0.6)" : "rgba(239, 68, 68, 0.6)",
+        ),
+        borderColor: participants.map((p) =>
+          p.technique === "speed_reading" ? "rgba(59, 130, 246, 1)" : "rgba(239, 68, 68, 1)",
+        ),
+        pointRadius: 8,
+      },
+    ],
+  }
+
+  const progressOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      title: {
+        display: true,
+        text: "Individual Progress: Time Improvement vs Accuracy Improvement",
+      },
+    },
+    scales: {
+      x: {
+        display: true,
+        title: {
+          display: true,
+          text: "Time Improvement (%)",
+        },
+        grid: {
+          display: true,
+        },
+      },
+      y: {
+        display: true,
+        title: {
+          display: true,
+          text: "Error Rate Reduction (%)",
+        },
+        grid: {
+          display: true,
+        },
+      },
+    },
+  }
+
+  const pieData = {
+    labels: ["Speed Reading", "Normal Reading"],
+    datasets: [
+      {
+        data: [
+          participants.filter((p) => p.technique === "speed_reading").length,
+          participants.filter((p) => p.technique === "normal_reading").length,
+        ],
+        backgroundColor: ["rgba(59, 130, 246, 0.6)", "rgba(239, 68, 68, 0.6)"],
+        borderColor: ["rgba(59, 130, 246, 1)", "rgba(239, 68, 68, 1)"],
+        borderWidth: 2,
+      },
+    ],
+  }
+
+  const pieOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: "top" as const,
+      },
+      title: {
+        display: true,
+        text: "Participant Distribution by Technique",
+      },
+    },
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-800 text-base sm:text-lg">Authentifizierung wird überprüft...</p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
     )
   }
 
-  if (!authenticated) {
+  if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <Card className="w-full max-w-md shadow-lg border-0">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-            <CardTitle className="text-center text-xl sm:text-2xl">Admin Dashboard</CardTitle>
-            <CardDescription className="text-blue-100 text-center text-sm sm:text-base">
-              Melden Sie sich mit Ihren Admin-Anmeldedaten an
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Admin Login</CardTitle>
+            <CardDescription>
+              {firebaseStatus === "unavailable"
+                ? "Demo mode - use any credentials"
+                : "Enter your credentials to access the dashboard"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 p-4 sm:p-6">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm sm:text-base">
-                E-Mail
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="border-2 focus:ring-2 focus:ring-blue-500 h-10 sm:h-12 text-sm sm:text-base"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm sm:text-base">
-                Passwort
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Passwort eingeben"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="border-2 focus:ring-2 focus:ring-blue-500 h-10 sm:h-12 text-sm sm:text-base"
-              />
-            </div>
-            {loginError && <div className="text-red-600 text-sm text-center bg-red-50 p-2 rounded">{loginError}</div>}
-            <Button
-              onClick={handleLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700 h-10 sm:h-12 text-sm sm:text-base"
-              disabled={authLoading || !email || !password}
-            >
-              {authLoading ? "Wird angemeldet..." : "Anmelden"}
-            </Button>
+          <CardContent>
+            {firebaseStatus === "unavailable" && (
+              <Alert className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Running in demo mode. Firebase authentication is not available.</AlertDescription>
+              </Alert>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={loginData.email}
+                  onChange={(e) => setLoginData((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="admin@example.com"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={loginData.password}
+                  onChange={(e) => setLoginData((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full">
+                Login
+              </Button>
+            </form>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
-      <div className="container mx-auto py-4 sm:py-8 px-2 sm:px-4 max-w-7xl">
-        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-blue-800">Lesestudie Ergebnisse</h1>
-              <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-                Administrationsbereich für die Analyse der Studienergebnisse
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <span className="text-xs sm:text-sm text-gray-600">Angemeldet als: {user?.email}</span>
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 text-xs sm:text-sm"
-              >
-                <LogOut className="h-3 w-3 sm:h-4 sm:w-4" />
-                Abmelden
-              </Button>
-            </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p className="text-gray-600">Reading Study Data Analysis</p>
+            {firebaseStatus === "unavailable" && (
+              <Badge variant="secondary" className="mt-2">
+                Demo Mode
+              </Badge>
+            )}
           </div>
+          <div className="flex items-center gap-4">
+            <Button onClick={exportToPDF} variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Export PDF
+            </Button>
+            <Button onClick={handleLogout} variant="outline">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        </div>
 
-          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                onClick={fetchData}
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-10"
-              >
-                {loading ? "Wird geladen..." : "Daten aktualisieren"}
-              </Button>
-              <Button
-                onClick={downloadCSV}
-                disabled={userData.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm h-8 sm:h-10"
-              >
-                <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                CSV herunterladen
-              </Button>
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Participants</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{participants.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Speed Reading</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {participants.filter((p) => p.technique === "speed_reading").length}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Normal Reading</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {participants.filter((p) => p.technique === "normal_reading").length}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Improvement</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {participants.length > 0
+                  ? Math.round(
+                      participants.reduce(
+                        (acc, p) => acc + ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100,
+                        0,
+                      ) / participants.length,
+                    )
+                  : 0}
+                %
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="comparison">Technique Comparison</TabsTrigger>
+            <TabsTrigger value="data">Raw Data</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div id="overview-charts" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Reading Performance Analysis</CardTitle>
+                    <CardDescription>Pre-training reading time vs error rate</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportToPNG("scatter-chart", "reading-performance")}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div id="scatter-chart" className="h-80">
+                    <Scatter data={scatterData} options={scatterOptions} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Participant Distribution</CardTitle>
+                    <CardDescription>Distribution by reading technique</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportToPNG("pie-chart", "participant-distribution")}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div id="pie-chart" className="h-80">
+                    <Pie data={pieData} options={pieOptions} />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={exportAllChartsAsPDF}
-                disabled={userData.length === 0 || exportingCharts}
-                className="bg-red-600 hover:bg-red-700 text-xs sm:text-sm h-8 sm:h-10"
-              >
-                <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                {exportingCharts ? "Exportiere..." : "Alle Diagramme als PDF"}
-              </Button>
+          </TabsContent>
+
+          <TabsContent value="comparison" className="space-y-6">
+            <div id="technique-comparison" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Technique Effectiveness</CardTitle>
+                    <CardDescription>Average improvement by technique</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => exportToPNG("bar-chart", "technique-comparison")}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div id="bar-chart" className="h-80">
+                    <Bar data={techniqueComparison} options={barOptions} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Individual Progress</CardTitle>
+                    <CardDescription>Time vs accuracy improvement correlation</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportToPNG("progress-chart", "individual-progress")}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div id="progress-chart" className="h-80">
+                    <Scatter data={progressData} options={progressOptions} />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-          
-          {/* Debug Information */}
-          {debugInfo && (
-            <Card className="border-0 shadow-lg overflow-hidden mb-4">
-              <CardHeader className="bg-gradient-to-r from-yellow-600 to-orange-600 text-white">
-                <CardTitle className="text-lg sm:text-xl">Debug Information</CardTitle>
+          </TabsContent>
+
+          <TabsContent value="data">
+            <Card>
+              <CardHeader>
+                <CardTitle>Raw Data</CardTitle>
+                <CardDescription>Complete participant dataset</CardDescription>
               </CardHeader>
-              <CardContent className="p-3 sm:p-6">
-                <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-32">
-                  {debugInfo}
-                </pre>
-                <div className="mt-2 text-sm text-gray-600">
-                  <p>Results: {results.length}</p>
-                  <p>Users: {userData.length}</p>
-                  <p>Time vs Mistake Data: {timeVsMistakeData.length}</p>
-                  <p>Test Group Data: {testGroupData.length}</p>
-                  <p>Average Time Data: {avgTimeData.length}</p>
-                  <p>Average Error Data: {avgErrorData.length}</p>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Technique</TableHead>
+                        <TableHead>Pre Time (s)</TableHead>
+                        <TableHead>Post Time (s)</TableHead>
+                        <TableHead>Pre Error (%)</TableHead>
+                        <TableHead>Post Error (%)</TableHead>
+                        <TableHead>Time Improvement</TableHead>
+                        <TableHead>Error Reduction</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {participants.map((participant, index) => (
+                        <TableRow key={participant.id || index}>
+                          <TableCell className="font-medium">{participant.name}</TableCell>
+                          <TableCell>{participant.age}</TableCell>
+                          <TableCell>
+                            <Badge variant={participant.technique === "speed_reading" ? "default" : "secondary"}>
+                              {participant.technique === "speed_reading" ? "Speed" : "Normal"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{participant.preReadingTime}</TableCell>
+                          <TableCell>{participant.postReadingTime}</TableCell>
+                          <TableCell>{participant.preErrorRate}%</TableCell>
+                          <TableCell>{participant.postErrorRate}%</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {Math.round(
+                                ((participant.preReadingTime - participant.postReadingTime) /
+                                  participant.preReadingTime) *
+                                  100,
+                              )}
+                              %
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{participant.preErrorRate - participant.postErrorRate}%</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
-        {userData.length > 0 ? (
-          <Tabs defaultValue="overview" className="space-y-6 sm:space-y-8">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-blue-100 p-1 rounded-lg">
-              <TabsTrigger
-                value="overview"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
-              >
-                Übersicht
-              </TabsTrigger>
-              <TabsTrigger
-                value="techniques"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
-              >
-                Technikvergleich
-              </TabsTrigger>
-              <TabsTrigger
-                value="individual"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
-              >
-                Einzelergebnisse
-              </TabsTrigger>
-              <TabsTrigger
-                value="raw"
-                className="data-[state=active]:bg-white data-[state=active]:text-blue-700 text-xs sm:text-sm"
-              >
-                Rohdaten
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-              <Card className="border-0 shadow-lg overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                    <div>
-                      <CardTitle className="text-lg sm:text-xl">Lesezeit vs. Fehlerquote</CardTitle>
-                      <CardDescription className="text-blue-100 text-sm sm:text-base">
-                        Vergleich von normalem Lesen und Schnelllesen bei allen Teilnehmern
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsImage(scatterChartRef, "lesezeit_vs_fehlerquote")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        PNG
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsSVG(scatterChartRef, "lesezeit_vs_fehlerquote")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        SVG
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-3 sm:p-6">
-                  <div ref={scatterChartRef} className="h-[300px] sm:h-[500px]">
-                    {timeVsMistakeData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            type="number"
-                            dataKey="readingTime"
-                            name="Lesezeit"
-                            label={{ value: "Lesezeit (Sekunden)", position: "bottom", offset: 20 }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <YAxis
-                            type="number"
-                            dataKey="mistakeRatio"
-                            name="Fehlerquote"
-                            label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <ZAxis range={[60, 60]} />
-                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Scatter
-                            name="Normales Lesen"
-                            data={timeVsMistakeData.filter((d) => d.type === "Normales Lesen")}
-                            fill="#4f46e5"
-                          />
-                          <Scatter
-                            name="Schnelllesen"
-                            data={timeVsMistakeData.filter((d) => d.type === "Schnelllesen")}
-                            fill="#10b981"
-                          />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Keine Daten verfügbar für dieses Diagramm (timeVsMistakeData: {timeVsMistakeData.length})</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                      <div>
-                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Lesezeit</CardTitle>
-                        <CardDescription className="text-blue-100 text-sm">
-                          Normales Lesen vs. Schnelllesen
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsImage(avgTimeChartRef, "durchschnittliche_lesezeit")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          PNG
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsSVG(avgTimeChartRef, "durchschnittliche_lesezeit")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          SVG
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-6">
-                    <div ref={avgTimeChartRef} className="h-[250px] sm:h-[300px]">
-                      {avgTimeData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={avgTimeData} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              type="number"
-                              label={{ value: "Zeit (Sekunden)", position: "bottom", offset: 0 }}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
-                            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
-                            <Legend
-                              layout="horizontal"
-                              verticalAlign="top"
-                              align="center"
-                              wrapperStyle={{ paddingBottom: "20px" }}
-                            />
-                            <Bar dataKey="Normales Lesen" fill="#4f46e5" />
-                            <Bar dataKey="Schnelllesen" fill="#10b981" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm (avgTimeData: {avgTimeData.length})</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                      <div>
-                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Fehlerquote</CardTitle>
-                        <CardDescription className="text-blue-100 text-sm">
-                          Normales Lesen vs. Schnelllesen
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsImage(avgErrorChartRef, "durchschnittliche_fehlerquote")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          PNG
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsSVG(avgErrorChartRef, "durchschnittliche_fehlerquote")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          SVG
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-6">
-                    <div ref={avgErrorChartRef} className="h-[250px] sm:h-[300px]">
-                      {avgErrorData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={avgErrorData} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              type="number"
-                              label={{ value: "Fehlerquote", position: "bottom", offset: 0 }}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
-                            <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
-                            <Legend
-                              layout="horizontal"
-                              verticalAlign="top"
-                              align="center"
-                              wrapperStyle={{ paddingBottom: "20px" }}
-                            />
-                            <Bar dataKey="Normales Lesen" fill="#4f46e5" />
-                            <Bar dataKey="Schnelllesen" fill="#10b981" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm (avgErrorData: {avgErrorData.length})</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="techniques" className="space-y-4 sm:space-y-6">
-              <Card className="border-0 shadow-lg overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                    <div>
-                      <CardTitle className="text-lg sm:text-xl">Vergleich der Schnelllesetechniken</CardTitle>
-                      <CardDescription className="text-blue-100 text-sm sm:text-base">
-                        Vergleich der Wirksamkeit verschiedener Schnelllesetechniken
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsImage(techniqueComparisonRef, "technikvergleich")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        PNG
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsSVG(techniqueComparisonRef, "technikvergleich")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        SVG
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-3 sm:p-6">
-                  <div ref={techniqueComparisonRef} className="h-[300px] sm:h-[400px]">
-                    {testGroupData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={testGroupData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            dataKey="technique"
-                            tick={{ fontSize: 10 }}
-                            height={60}
-                            tickFormatter={(value) => {
-                              // Wrap long technique names
-                              if (value.length > 12) {
-                                return value.substring(0, 12) + "..."
-                              }
-                              return value
-                            }}
-                          />
-                          <YAxis
-                            label={{ value: "Verbesserung (%)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, ""]} />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Bar dataKey="timeImprovement" name="Lesegeschwindigkeitsverbesserung (%)" fill="#10b981" />
-                          <Bar dataKey="accuracyChange" name="Genauigkeitsänderung (%)" fill="#4f46e5" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                      <div>
-                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Lesezeit nach Technik</CardTitle>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsImage(timeByTechniqueRef, "lesezeit_nach_technik")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          PNG
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsSVG(timeByTechniqueRef, "lesezeit_nach_technik")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          SVG
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-6">
-                    <div ref={timeByTechniqueRef} className="h-[250px] sm:h-[300px]">
-                      {testGroupData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={testGroupData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="technique"
-                              tick={{ fontSize: 10 }}
-                              height={60}
-                              tickFormatter={(value) => {
-                                // Wrap long technique names
-                                if (value.length > 12) {
-                                  return value.substring(0, 12) + "..."
-                                }
-                                return value
-                              }}
-                            />
-                            <YAxis
-                              label={{ value: "Zeit (Sekunden)", angle: -90, position: "insideLeft" }}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)} s`, ""]} />
-                            <Legend
-                              layout="horizontal"
-                              verticalAlign="top"
-                              align="center"
-                              wrapperStyle={{ paddingBottom: "20px" }}
-                            />
-                            <Bar dataKey="normalReadingTime" name="Normales Lesen" fill="#4f46e5" />
-                            <Bar dataKey="speedReadingTime" name="Schnelllesen" fill="#10b981" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                      <div>
-                        <CardTitle className="text-lg sm:text-xl">Durchschnittliche Fehlerquote nach Technik</CardTitle>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsImage(errorByTechniqueRef, "fehlerquote_nach_technik")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          PNG
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                          onClick={() => exportChartAsSVG(errorByTechniqueRef, "fehlerquote_nach_technik")}
-                        >
-                          <FileImage className="h-3 w-3 mr-1" />
-                          SVG
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-6">
-                    <div ref={errorByTechniqueRef} className="h-[250px] sm:h-[300px]">
-                      {testGroupData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={testGroupData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="technique"
-                              tick={{ fontSize: 10 }}
-                              height={60}
-                              tickFormatter={(value) => {
-                                // Wrap long technique names
-                                if (value.length > 12) {
-                                  return value.substring(0, 12) + "..."
-                                }
-                                return value
-                              }}
-                            />
-                            <YAxis
-                              label={{ value: "Fehlerquote", angle: -90, position: "insideLeft" }}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <Tooltip formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, ""]} />
-                            <Legend
-                              layout="horizontal"
-                              verticalAlign="top"
-                              align="center"
-                              wrapperStyle={{ paddingBottom: "20px" }}
-                            />
-                            <Bar dataKey="normalMistakeRatio" name="Normales Lesen" fill="#4f46e5" />
-                            <Bar dataKey="speedMistakeRatio" name="Schnelllesen" fill="#10b981" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          <p>Keine Daten verfügbar für dieses Diagramm (testGroupData: {testGroupData.length})</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="individual" className="space-y-4 sm:space-y-6">
-              <Card className="border-0 shadow-lg overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                    <div>
-                      <CardTitle className="text-lg sm:text-xl">Individuelle Verbesserung</CardTitle>
-                      <CardDescription className="text-blue-100 text-sm sm:text-base">
-                        Zeitverbesserung vs. Genauigkeitsänderung für jeden Teilnehmer
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsImage(individualImprovementRef, "individuelle_verbesserung")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        PNG
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-white border-white hover:bg-white hover:text-blue-600 text-xs h-8"
-                        onClick={() => exportChartAsSVG(individualImprovementRef, "individuelle_verbesserung")}
-                      >
-                        <FileImage className="h-3 w-3 mr-1" />
-                        SVG
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-3 sm:p-6">
-                  <div ref={individualImprovementRef} className="h-[300px] sm:h-[500px]">
-                    {individualData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 30 }}>
-                          <CartesianGrid />
-                          <XAxis
-                            type="number"
-                            dataKey="timeImprovement"
-                            name="Zeitverbesserung"
-                            label={{ value: "Zeitverbesserung (%)", position: "bottom", offset: 20 }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <YAxis
-                            type="number"
-                            dataKey="accuracyChange"
-                            name="Genauigkeitsänderung"
-                            label={{ value: "Genauigkeitsänderung (%)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip
-                            formatter={(value, name, payload: Payload[]) => [Number(value).toFixed(2) + "%", name]}
-                            labelFormatter={(value, name, payload: Payload[]) =>
-                              `Teilnehmer: ${payload[0]?.payload?.nickname || "Unknown"}`
-                            }
-                            cursor={{ strokeDasharray: "3 3" }}
-                          />
-                          <Legend
-                            layout="horizontal"
-                            verticalAlign="top"
-                            align="center"
-                            wrapperStyle={{ paddingBottom: "20px" }}
-                          />
-                          <Scatter
-                            name="Gruppe 1 (Skimming)"
-                            data={individualData.filter((d) => d.testGroup === 1)}
-                            fill="#4f46e5"
-                          />
-                          <Scatter
-                            name="Gruppe 2 (Zeiger)"
-                            data={individualData.filter((d) => d.testGroup === 2)}
-                            fill="#10b981"
-                          />
-                          <Scatter
-                            name="Gruppe 3 (Subvokalisierung)"
-                            data={individualData.filter((d) => d.testGroup === 3)}
-                            fill="#f59e0b"
-                          />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Keine Daten verfügbar für dieses Diagramm (individualData: {individualData.length})</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="raw">
-              <Card className="border-0 shadow-lg overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                  <CardTitle className="text-lg sm:text-xl">Benutzerdaten</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-blue-50">
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Spitzname
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Testgruppe
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Technik
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Phase 1 Zeit
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Phase 1 Punkte
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Phase 2 Zeit
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Phase 2 Punkte
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Zeitverbesserung
-                          </th>
-                          <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-blue-800">
-                            Genauigkeitsänderung
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {userData
-                          .filter((user) => user.results?.phase1 && user.results?.phase2)
-                          .map((user) => {
-                            const phase1 = user.results.phase1
-                            const phase2 = user.results.phase2
-                            const timeImprovement =
-                              ((phase1.readingTime - phase2.readingTime) / phase1.readingTime) * 100
-                            const accuracyChange =
-                              ((phase1.mistakeRatio - phase2.mistakeRatio) / phase1.mistakeRatio) * 100
-
-                            return (
-                              <tr key={user.id} className="hover:bg-blue-50">
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.nickname}</td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.testGroup}</td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{user.technique}</td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
-                                  {phase1.readingTime.toFixed(1)}s
-                                </td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{phase1.score}/10</td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
-                                  {phase2.readingTime.toFixed(1)}s
-                                </td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">{phase2.score}/10</td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-green-600">
-                                  {timeImprovement.toFixed(1)}%
-                                </td>
-                                <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-blue-600">
-                                  {accuracyChange.toFixed(1)}%
-                                </td>
-                              </tr>
-                            )
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        ) : (
-          <div className="bg-white rounded-lg shadow-lg p-8 sm:p-12 text-center">
-            <p className="text-gray-500 text-base sm:text-lg">
-              Keine Ergebnisse gefunden. Starten Sie die Studie, um Daten zu sammeln.
-            </p>
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
       </div>
+
+      <Toaster />
     </div>
   )
 }
