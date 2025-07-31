@@ -1,8 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } from "@firebase/auth"
+import { collection, getDocs, query, orderBy, addDoc } from "@firebase/firestore"
+import { auth, db, isFirebaseAvailable, mockData, logAnalyticsEvent } from "@/lib/firebase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,9 +41,9 @@ import {
   BarChart3,
   PieChartIcon,
   ScatterChartIcon as Scatter3D,
+  LogOut,
+  Lock,
 } from "lucide-react"
-import { collection, getDocs, query, orderBy, addDoc } from "@firebase/firestore"
-import { db, isFirebaseAvailable, mockData, logAnalyticsEvent } from "@/lib/firebase"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -72,11 +74,20 @@ interface ChartData {
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
 
 export default function AdminDashboard() {
-  const [participants, setParticipants] = useState<ParticipantData[]>([])
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [participants, setParticipants] = useState<ParticipantData[]>([])
+  const [dataLoading, setDataLoading] = useState(false)
   const [firebaseStatus, setFirebaseStatus] = useState<"checking" | "available" | "unavailable">("checking")
   const [selectedChart, setSelectedChart] = useState<"bar" | "scatter" | "pie">("bar")
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Login form state
+  const [loginData, setLoginData] = useState({
+    email: "",
+    password: "",
+  })
 
   // Manual data entry form
   const [manualEntry, setManualEntry] = useState({
@@ -89,71 +100,218 @@ export default function AdminDashboard() {
   })
 
   useEffect(() => {
-    checkFirebaseAndLoadData()
+    checkFirebaseAndSetupAuth()
   }, [])
 
-  const checkFirebaseAndLoadData = async () => {
+  useEffect(() => {
+    if (user) {
+      loadParticipantData()
+    }
+  }, [user])
+
+  const checkFirebaseAndSetupAuth = async () => {
     setLoading(true)
 
     try {
       if (isFirebaseAvailable()) {
         setFirebaseStatus("available")
-        await loadParticipantData()
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          setUser(user)
+          setLoading(false)
+        })
+        return () => unsubscribe()
       } else {
         setFirebaseStatus("unavailable")
+        setLoading(false)
+        // In demo mode, simulate being logged in
+        setUser({ email: "demo@example.com" } as User)
         loadMockData()
       }
     } catch (error) {
-      console.error("Error checking Firebase:", error)
+      console.error("Error setting up auth:", error)
       setFirebaseStatus("unavailable")
-      loadMockData()
-    } finally {
       setLoading(false)
+      setUser({ email: "demo@example.com" } as User)
+      loadMockData()
     }
   }
 
-  const loadParticipantData = async () => {
-    try {
-      const resultsQuery = query(collection(db, "reading_study_results"), orderBy("timestamp", "desc"))
-      const querySnapshot = await getDocs(resultsQuery)
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginLoading(true)
 
+    if (!isFirebaseAvailable()) {
+      toast({
+        title: "Demo Mode",
+        description: "Logged in with demo credentials",
+      })
+      setUser({ email: "demo@example.com" } as User)
+      setLoginLoading(false)
+      return
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, loginData.email, loginData.password)
+      toast({
+        title: "Success",
+        description: "Logged in successfully",
+      })
+    } catch (error: any) {
+      console.error("Login error:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Invalid credentials",
+        variant: "destructive",
+      })
+    }
+    setLoginLoading(false)
+  }
+
+  const handleLogout = async () => {
+    if (isFirebaseAvailable()) {
+      try {
+        await signOut(auth)
+      } catch (error) {
+        console.error("Logout error:", error)
+      }
+    } else {
+      setUser(null)
+    }
+
+    toast({
+      title: "Success",
+      description: "Logged out successfully",
+    })
+  }
+
+  const loadParticipantData = async () => {
+    setDataLoading(true)
+
+    try {
+      // Try to load from users collection with results subcollections
+      const usersSnapshot = await getDocs(collection(db, "users"))
       const participantMap = new Map<string, Partial<ParticipantData>>()
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data()
-        const sessionId = data.sessionId
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data()
+        const userId = userDoc.id
 
-        if (!participantMap.has(sessionId)) {
-          participantMap.set(sessionId, {
-            id: sessionId,
-            nickname: data.nickname,
-            testGroup: data.testGroup,
-            technique: data.technique,
-            timestamp: data.timestamp?.toDate() || new Date(),
+        // Get results subcollection for this user
+        try {
+          const resultsSnapshot = await getDocs(collection(db, "users", userId, "results"))
+
+          let phase1Data: any = null
+          let phase2Data: any = null
+
+          resultsSnapshot.forEach((resultDoc) => {
+            const resultData = resultDoc.data()
+            if (resultDoc.id === "phase1") {
+              phase1Data = resultData
+            } else if (resultDoc.id === "phase2") {
+              phase2Data = resultData
+            }
+          })
+
+          // Only add participants with both phases
+          if (phase1Data && phase2Data) {
+            const participant: ParticipantData = {
+              id: userId,
+              nickname: userData.nickname || `User ${userId.slice(0, 6)}`,
+              testGroup: userData.testGroup || 4,
+              technique: userData.testGroup <= 3 ? "Speed Reading" : "Normal Reading",
+              phase1Time: phase1Data.readingTime || 0,
+              phase1Score: phase1Data.score || 0,
+              phase2Time: phase2Data.readingTime || 0,
+              phase2Score: phase2Data.score || 0,
+              phase1MistakeRatio: phase1Data.mistakeRatio || 0,
+              phase2MistakeRatio: phase2Data.mistakeRatio || 0,
+              timestamp: userData.createdAt?.toDate() || new Date(),
+              improvement:
+                phase1Data.readingTime && phase2Data.readingTime
+                  ? ((phase1Data.readingTime - phase2Data.readingTime) / phase1Data.readingTime) * 100
+                  : 0,
+            }
+            participantMap.set(userId, participant)
+          }
+        } catch (error) {
+          console.log(`Error fetching results for user ${userId}:`, error)
+        }
+      }
+
+      const completeParticipants = Array.from(participantMap.values()) as ParticipantData[]
+
+      if (completeParticipants.length > 0) {
+        setParticipants(completeParticipants)
+        toast({
+          title: "Success",
+          description: `Loaded ${completeParticipants.length} participants from Firebase`,
+        })
+      } else {
+        // Fallback to reading_study_results collection
+        try {
+          const resultsQuery = query(collection(db, "reading_study_results"), orderBy("timestamp", "desc"))
+          const querySnapshot = await getDocs(resultsQuery)
+
+          const sessionMap = new Map<string, Partial<ParticipantData>>()
+
+          querySnapshot.forEach((doc) => {
+            const data = doc.data()
+            const sessionId = data.sessionId
+
+            if (!sessionMap.has(sessionId)) {
+              sessionMap.set(sessionId, {
+                id: sessionId,
+                nickname: data.nickname,
+                testGroup: data.testGroup,
+                technique: data.technique,
+                timestamp: data.timestamp?.toDate() || new Date(),
+              })
+            }
+
+            const participant = sessionMap.get(sessionId)!
+
+            if (data.phase === 1) {
+              participant.phase1Time = data.readingTime
+              participant.phase1Score = data.score
+              participant.phase1MistakeRatio = data.mistakeRatio
+            } else if (data.phase === 2) {
+              participant.phase2Time = data.readingTime
+              participant.phase2Score = data.score
+              participant.phase2MistakeRatio = data.mistakeRatio
+            }
+          })
+
+          const legacyParticipants = Array.from(sessionMap.values())
+            .filter((p) => p.phase1Time !== undefined && p.phase2Time !== undefined)
+            .map((p) => ({
+              ...p,
+              improvement: p.phase1Time && p.phase2Time ? ((p.phase1Time - p.phase2Time) / p.phase1Time) * 100 : 0,
+            })) as ParticipantData[]
+
+          if (legacyParticipants.length > 0) {
+            setParticipants(legacyParticipants)
+            toast({
+              title: "Success",
+              description: `Loaded ${legacyParticipants.length} participants from legacy structure`,
+            })
+          } else {
+            loadMockData()
+            toast({
+              title: "No Data",
+              description: "No participants found in Firebase. Using sample data.",
+              variant: "destructive",
+            })
+          }
+        } catch (legacyError) {
+          console.error("Error loading from legacy structure:", legacyError)
+          loadMockData()
+          toast({
+            title: "Error",
+            description: "Failed to load data from Firebase. Using sample data.",
+            variant: "destructive",
           })
         }
-
-        const participant = participantMap.get(sessionId)!
-
-        if (data.phase === 1) {
-          participant.phase1Time = data.readingTime
-          participant.phase1Score = data.score
-          participant.phase1MistakeRatio = data.mistakeRatio
-        } else if (data.phase === 2) {
-          participant.phase2Time = data.readingTime
-          participant.phase2Score = data.score
-          participant.phase2MistakeRatio = data.mistakeRatio
-        }
-      })
-
-      const completeParticipants = Array.from(participantMap.values())
-        .filter((p) => p.phase1Time !== undefined && p.phase2Time !== undefined)
-        .map((p) => ({
-          ...p,
-          improvement: p.phase1Time && p.phase2Time ? ((p.phase1Time - p.phase2Time) / p.phase1Time) * 100 : 0,
-        })) as ParticipantData[]
-
-      setParticipants(completeParticipants)
+      }
 
       logAnalyticsEvent("admin_data_loaded", {
         participant_count: completeParticipants.length,
@@ -161,12 +319,15 @@ export default function AdminDashboard() {
       })
     } catch (error) {
       console.error("Error loading participant data:", error)
+      loadMockData()
       toast({
         title: "Error",
-        description: "Failed to load participant data from Firebase",
+        description: "Failed to load data from Firebase. Using sample data.",
         variant: "destructive",
       })
     }
+
+    setDataLoading(false)
   }
 
   const loadMockData = () => {
@@ -195,7 +356,9 @@ export default function AdminDashboard() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await checkFirebaseAndLoadData()
+    if (user) {
+      await loadParticipantData()
+    }
     setIsRefreshing(false)
     toast({
       title: "Data Refreshed",
@@ -340,6 +503,70 @@ export default function AdminDashboard() {
     )
   }
 
+  // Show login form if user is not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <Lock className="h-6 w-6 text-blue-600" />
+            </div>
+            <CardTitle>Admin Login</CardTitle>
+            <CardDescription>
+              {firebaseStatus === "unavailable"
+                ? "Demo mode - use any credentials"
+                : "Enter your admin credentials to access the dashboard"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {firebaseStatus === "unavailable" && (
+              <Alert className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Running in demo mode. Firebase authentication is not available.</AlertDescription>
+              </Alert>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={loginData.email}
+                  onChange={(e) => setLoginData((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="krieger.levin@gmail.com"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={loginData.password}
+                  onChange={(e) => setLoginData((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loginLoading}>
+                {loginLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -348,6 +575,7 @@ export default function AdminDashboard() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Reading Study Dashboard</h1>
             <p className="text-gray-600">Analytics and participant management</p>
+            <p className="text-sm text-gray-500">Logged in as: {user.email}</p>
           </div>
           <div className="flex items-center gap-3">
             {firebaseStatus === "available" && (
@@ -362,6 +590,12 @@ export default function AdminDashboard() {
                 Demo Mode
               </Badge>
             )}
+            {dataLoading && (
+              <Badge variant="outline">
+                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                Loading Data
+              </Badge>
+            )}
             <Button onClick={handleRefresh} disabled={isRefreshing} variant="outline">
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
               Refresh
@@ -369,6 +603,10 @@ export default function AdminDashboard() {
             <Button onClick={exportData} disabled={participants.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export CSV
+            </Button>
+            <Button onClick={handleLogout} variant="outline">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
             </Button>
           </div>
         </div>
