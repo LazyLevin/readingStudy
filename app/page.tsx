@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,24 +7,11 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Progress } from "@/components/ui/progress"
-import { Clock, BookOpen, Brain, Target, AlertCircle } from "lucide-react"
-import { collection, doc, setDoc, addDoc, getDocs } from "firebase/firestore"
-import { db, isFirebaseAvailable, mockData } from "@/lib/firebase"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Clock, BookOpen, Brain, Target, AlertCircle, CheckCircle } from "lucide-react"
+import { collection, doc, setDoc, addDoc } from "firebase/firestore"
+import { db, isFirebaseAvailable, logAnalyticsEvent } from "@/lib/firebase"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-
-interface Participant {
-  id?: string
-  name: string
-  age: number
-  technique: "speed_reading" | "normal_reading"
-  preReadingTime: number
-  postReadingTime: number
-  preErrorRate: number
-  postErrorRate: number
-  timestamp: Date
-}
 
 // Reading passages and questions
 const passages = [
@@ -297,7 +282,7 @@ im Alter von 80.`,
 ]
 
 // Speed reading techniques by group
-const speedReadingTechniquesByGroup = {
+const speedReadingTechniquesByGroup: Record<number, { name: string; description: string }> = {
   1: {
     name: "Skimming-Technik",
     description:
@@ -333,16 +318,6 @@ export default function ReadingStudyApp() {
   const [testGroup, setTestGroup] = useState<number>(0)
   const [sessionId, setSessionId] = useState<string>("")
   const [isLoaded, setIsLoaded] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    age: "",
-    technique: "",
-    preReadingTime: "",
-    postReadingTime: "",
-    preErrorRate: "",
-    postErrorRate: "",
-  })
-  const [participants, setParticipants] = useState<Participant[]>([])
   const [firebaseStatus, setFirebaseStatus] = useState<"checking" | "available" | "unavailable">("checking")
 
   // Assign test group on component mount
@@ -350,9 +325,16 @@ export default function ReadingStudyApp() {
     // Randomly assign to group 1, 2, or 3
     const group = Math.floor(Math.random() * 3) + 1
     setTestGroup(group)
-    setSessionId(generateSessionId())
+    const newSessionId = generateSessionId()
+    setSessionId(newSessionId)
     setIsLoaded(true)
-    checkFirebaseAndLoadData()
+    checkFirebaseStatus()
+
+    // Log analytics event for study start
+    logAnalyticsEvent("study_started", {
+      test_group: group,
+      session_id: newSessionId,
+    })
   }, [])
 
   const steps = [
@@ -372,6 +354,11 @@ export default function ReadingStudyApp() {
       const mistakeRatio = (passages[phase].questions.length - score) / passages[phase].questions.length
       const technique = phase === 1 ? speedReadingTechniquesByGroup[testGroup].name : "Normales Lesen"
 
+      if (!isFirebaseAvailable()) {
+        console.log("Firebase not available, results not saved to database")
+        return
+      }
+
       // Create a user document if it's the first phase
       if (phase === 0) {
         // Create a document in the users collection
@@ -380,6 +367,12 @@ export default function ReadingStudyApp() {
           testGroup,
           technique: speedReadingTechniquesByGroup[testGroup].name,
           createdAt: timestamp,
+        })
+
+        // Log analytics event
+        logAnalyticsEvent("user_created", {
+          test_group: testGroup,
+          technique: speedReadingTechniquesByGroup[testGroup].name,
         })
       }
 
@@ -420,14 +413,36 @@ export default function ReadingStudyApp() {
         mistakeRatio,
         technique,
       })
+
+      // Log analytics event
+      logAnalyticsEvent("phase_completed", {
+        phase: phase + 1,
+        reading_time: readingTime,
+        score: score,
+        test_group: testGroup,
+        technique: technique,
+      })
+
+      console.log(`Phase ${phase + 1} results saved successfully`)
     } catch (error) {
       console.error("Error saving results:", error)
+      toast({
+        title: "Warning",
+        description: "Results could not be saved to database, but study can continue.",
+        variant: "destructive",
+      })
     }
   }
 
   const startReading = () => {
     setIsReading(true)
     setStartTime(Date.now())
+
+    // Log analytics event
+    logAnalyticsEvent("reading_started", {
+      phase: currentPhase + 1,
+      test_group: testGroup,
+    })
   }
 
   const stopReading = () => {
@@ -436,6 +451,13 @@ export default function ReadingStudyApp() {
     setReadingTimes([...readingTimes, readingTime])
     setIsReading(false)
     setStep(step + 1)
+
+    // Log analytics event
+    logAnalyticsEvent("reading_completed", {
+      phase: currentPhase + 1,
+      reading_time: readingTime,
+      test_group: testGroup,
+    })
   }
 
   const handleAnswerChange = (questionIndex: number, answer: string) => {
@@ -463,9 +485,24 @@ export default function ReadingStudyApp() {
         setStep(step + 1) // Go to speed reading tips
       } else {
         setStep(step + 1) // Go to completion
+
+        // Log study completion
+        logAnalyticsEvent("study_completed", {
+          test_group: testGroup,
+          phase1_time: readingTimes[0],
+          phase2_time: readingTimes[1],
+          phase1_score: scores[0],
+          phase2_score: correctAnswers,
+          improvement: readingTimes[1] ? ((readingTimes[0] - readingTimes[1]) / readingTimes[0]) * 100 : 0,
+        })
       }
     } catch (error) {
       console.error("Error submitting answers:", error)
+      toast({
+        title: "Error",
+        description: "There was an error submitting your answers. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -476,106 +513,19 @@ export default function ReadingStudyApp() {
     setStep(step + 1)
   }
 
-  const checkFirebaseAndLoadData = async () => {
+  const checkFirebaseStatus = async () => {
     try {
       if (isFirebaseAvailable()) {
         setFirebaseStatus("available")
-        await loadParticipants()
+        console.log("Firebase is available and connected")
       } else {
         setFirebaseStatus("unavailable")
-        setParticipants(mockData.participants)
-        console.log("Using mock data - Firebase not available")
+        console.log("Firebase not available - running in demo mode")
       }
     } catch (error) {
       console.error("Error checking Firebase:", error)
       setFirebaseStatus("unavailable")
-      setParticipants(mockData.participants)
     }
-  }
-
-  const loadParticipants = async () => {
-    if (!isFirebaseAvailable()) return
-
-    try {
-      const querySnapshot = await getDocs(collection(db!, "participants"))
-      const participantData: Participant[] = []
-      querySnapshot.forEach((doc) => {
-        const data = doc.data()
-        participantData.push({
-          id: doc.id,
-          ...data,
-          timestamp: data.timestamp?.toDate() || new Date(),
-        } as Participant)
-      })
-      setParticipants(participantData)
-    } catch (error) {
-      console.error("Error loading participants:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load participant data. Using sample data.",
-        variant: "destructive",
-      })
-      setParticipants(mockData.participants)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-
-    try {
-      const participant: Participant = {
-        name: formData.name,
-        age: Number.parseInt(formData.age),
-        technique: formData.technique as "speed_reading" | "normal_reading",
-        preReadingTime: Number.parseInt(formData.preReadingTime),
-        postReadingTime: Number.parseInt(formData.postReadingTime),
-        preErrorRate: Number.parseInt(formData.preErrorRate),
-        postErrorRate: Number.parseInt(formData.postErrorRate),
-        timestamp: new Date(),
-      }
-
-      if (isFirebaseAvailable()) {
-        await addDoc(collection(db!, "participants"), participant)
-        await loadParticipants()
-        toast({
-          title: "Success",
-          description: "Participant data submitted successfully!",
-        })
-      } else {
-        // Add to mock data for demo purposes
-        const newParticipant = { ...participant, id: Date.now().toString() }
-        setParticipants((prev) => [...prev, newParticipant])
-        toast({
-          title: "Demo Mode",
-          description: "Data saved locally (Firebase not connected)",
-        })
-      }
-
-      // Reset form
-      setFormData({
-        name: "",
-        age: "",
-        technique: "",
-        preReadingTime: "",
-        postReadingTime: "",
-        preErrorRate: "",
-        postErrorRate: "",
-      })
-    } catch (error) {
-      console.error("Error submitting data:", error)
-      toast({
-        title: "Error",
-        description: "Failed to submit data. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const renderNicknameEntry = () => (
@@ -804,6 +754,11 @@ export default function ReadingStudyApp() {
             Ihre Ergebnisse wurden gespeichert. Vielen Dank für Ihre Teilnahme!
           </p>
         </div>
+        <div className="text-center pt-4">
+          <Button variant="outline" asChild>
+            <a href="/admin">View Results Dashboard</a>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -862,6 +817,15 @@ export default function ReadingStudyApp() {
           </div>
         )}
 
+        {firebaseStatus === "available" && (
+          <div className="mt-8 flex items-center justify-center">
+            <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+            <p className="text-green-600 text-sm sm:text-base">
+              Connected to Firebase - Data will be saved to your database
+            </p>
+          </div>
+        )}
+
         {firebaseStatus === "unavailable" && (
           <div className="mt-8 flex items-center justify-center">
             <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
@@ -871,202 +835,6 @@ export default function ReadingStudyApp() {
             </p>
           </div>
         )}
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Participants</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{participants.length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Speed Reading</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {participants.filter((p) => p.technique === "speed_reading").length}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Normal Reading</CardTitle>
-              <Target className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {participants.filter((p) => p.technique === "normal_reading").length}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Data Entry Form */}
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle>Submit Your Reading Study Data</CardTitle>
-            <CardDescription>Please fill out all fields with your reading test results</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Enter your full name"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="age">Age</Label>
-                  <Input
-                    id="age"
-                    type="number"
-                    value={formData.age}
-                    onChange={(e) => handleInputChange("age", e.target.value)}
-                    placeholder="Enter your age"
-                    min="18"
-                    max="100"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="technique">Reading Technique</Label>
-                <Select value={formData.technique} onValueChange={(value) => handleInputChange("technique", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select the reading technique you used" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="speed_reading">Speed Reading</SelectItem>
-                    <SelectItem value="normal_reading">Normal Reading</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="preReadingTime">Pre-Training Reading Time (seconds)</Label>
-                  <Input
-                    id="preReadingTime"
-                    type="number"
-                    value={formData.preReadingTime}
-                    onChange={(e) => handleInputChange("preReadingTime", e.target.value)}
-                    placeholder="e.g., 180"
-                    min="1"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="postReadingTime">Post-Training Reading Time (seconds)</Label>
-                  <Input
-                    id="postReadingTime"
-                    type="number"
-                    value={formData.postReadingTime}
-                    onChange={(e) => handleInputChange("postReadingTime", e.target.value)}
-                    placeholder="e.g., 120"
-                    min="1"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="preErrorRate">Pre-Training Error Rate (%)</Label>
-                  <Input
-                    id="preErrorRate"
-                    type="number"
-                    value={formData.preErrorRate}
-                    onChange={(e) => handleInputChange("preErrorRate", e.target.value)}
-                    placeholder="e.g., 15"
-                    min="0"
-                    max="100"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="postErrorRate">Post-Training Error Rate (%)</Label>
-                  <Input
-                    id="postErrorRate"
-                    type="number"
-                    value={formData.postErrorRate}
-                    onChange={(e) => handleInputChange("postErrorRate", e.target.value)}
-                    placeholder="e.g., 8"
-                    min="0"
-                    max="100"
-                    required
-                  />
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Submit Data"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Recent Submissions */}
-        {participants.length > 0 && (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Recent Submissions</CardTitle>
-              <CardDescription>Latest participant data entries</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {participants
-                  .slice(-5)
-                  .reverse()
-                  .map((participant, index) => (
-                    <div
-                      key={participant.id || index}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{participant.name}</p>
-                        <p className="text-sm text-gray-600">
-                          {participant.technique === "speed_reading" ? "Speed Reading" : "Normal Reading"} • Age{" "}
-                          {participant.age}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm">
-                          Time: {participant.preReadingTime}s → {participant.postReadingTime}s
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Errors: {participant.preErrorRate}% → {participant.postErrorRate}%
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Admin Link */}
-        <div className="text-center mt-8">
-          <Button variant="outline" asChild>
-            <a href="/admin">View Admin Dashboard</a>
-          </Button>
-        </div>
       </div>
 
       <Toaster />

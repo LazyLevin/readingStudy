@@ -1,59 +1,52 @@
-import { initializeApp, getApps } from "firebase/app"
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore"
-import { getAuth, connectAuthEmulator } from "firebase/auth"
+import { initializeApp } from "@firebase/app"
+import { getFirestore } from "@firebase/firestore"
+import { getAuth } from "@firebase/auth"
+import { getAnalytics, isSupported } from "@firebase/analytics"
 
-// Firebase configuration with fallbacks
+// Your Firebase configuration
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "demo-api-key",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "demo-project.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "demo-project",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "demo-project.appspot.com",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:123456789:web:abcdef123456",
+  apiKey: "AIzaSyBpevRmDuezk2TymhqTiEWUbQnGQGDl3a4",
+  authDomain: "readingstudy-4f697.firebaseapp.com",
+  projectId: "readingstudy-4f697",
+  storageBucket: "readingstudy-4f697.firebasestorage.app",
+  messagingSenderId: "795312421690",
+  appId: "1:795312421690:web:9fcd196431641f545b2e03",
+  measurementId: "G-F4155QFZPW",
 }
 
-// Initialize Firebase only if it hasn't been initialized
-let app
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig)
-} else {
-  app = getApps()[0]
-}
+// Initialize Firebase
+const app = initializeApp(firebaseConfig)
+const db = getFirestore(app)
+const auth = getAuth(app)
 
-// Initialize Firestore
-let db
-let auth
-
-try {
-  db = getFirestore(app)
-  auth = getAuth(app)
-
-  // Connect to emulators in development if no real config is provided
-  if (process.env.NODE_ENV === "development" && !process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-    console.log("Using Firebase emulators for development")
-
-    // Only connect to emulators if not already connected
-    try {
-      connectFirestoreEmulator(db, "localhost", 8080)
-      connectAuthEmulator(auth, "http://localhost:9099")
-    } catch (error) {
-      // Emulators might already be connected
-      console.log("Emulators already connected or not available")
+// Initialize Analytics only in browser
+let analytics = null
+if (typeof window !== "undefined") {
+  isSupported().then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app)
     }
-  }
-} catch (error) {
-  console.error("Firebase initialization error:", error)
-
-  // Create mock services for development
-  db = null
-  auth = null
+  })
 }
 
-export { db, auth, app }
+export { db, auth, app, analytics }
 
 // Helper function to check if Firebase is available
 export const isFirebaseAvailable = () => {
   return db !== null && auth !== null
+}
+
+// Helper function to log analytics events
+export const logAnalyticsEvent = (eventName: string, parameters?: any) => {
+  if (analytics && typeof window !== "undefined") {
+    try {
+      import("@firebase/analytics").then(({ logEvent }) => {
+        logEvent(analytics, eventName, parameters)
+      })
+    } catch (error) {
+      console.log("Analytics event logging failed:", error)
+    }
+  }
 }
 
 // Mock data for when Firebase is not available
@@ -63,7 +56,7 @@ export const mockData = {
       id: "1",
       name: "Alice Johnson",
       age: 25,
-      technique: "speed_reading",
+      technique: "speed_reading" as const,
       preReadingTime: 180,
       postReadingTime: 120,
       preErrorRate: 15,
@@ -74,7 +67,7 @@ export const mockData = {
       id: "2",
       name: "Bob Smith",
       age: 30,
-      technique: "normal_reading",
+      technique: "normal_reading" as const,
       preReadingTime: 200,
       postReadingTime: 190,
       preErrorRate: 12,
@@ -85,7 +78,7 @@ export const mockData = {
       id: "3",
       name: "Carol Davis",
       age: 28,
-      technique: "speed_reading",
+      technique: "speed_reading" as const,
       preReadingTime: 170,
       postReadingTime: 100,
       preErrorRate: 18,
@@ -96,7 +89,7 @@ export const mockData = {
       id: "4",
       name: "David Wilson",
       age: 35,
-      technique: "normal_reading",
+      technique: "normal_reading" as const,
       preReadingTime: 220,
       postReadingTime: 210,
       preErrorRate: 10,
@@ -107,7 +100,7 @@ export const mockData = {
       id: "5",
       name: "Eva Brown",
       age: 22,
-      technique: "speed_reading",
+      technique: "speed_reading" as const,
       preReadingTime: 160,
       postReadingTime: 95,
       preErrorRate: 20,
