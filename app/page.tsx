@@ -754,11 +754,7 @@ export default function ReadingStudyApp() {
             Ihre Ergebnisse wurden gespeichert. Vielen Dank für Ihre Teilnahme!
           </p>
         </div>
-        <div className="text-center pt-4">
-          <Button variant="outline" asChild>
-            <a href="/admin">View Results Dashboard</a>
-          </Button>
-        </div>
+        
       </CardContent>
     </Card>
   )
@@ -819,10 +815,7 @@ export default function ReadingStudyApp() {
 
         {firebaseStatus === "available" && (
           <div className="mt-8 flex items-center justify-center">
-            <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
-            <p className="text-green-600 text-sm sm:text-base">
-              Connected to Firebase - Data will be saved to your database
-            </p>
+          
           </div>
         )}
 
