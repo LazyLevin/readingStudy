@@ -571,7 +571,7 @@ export default function ReadingStudyApp() {
       <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         <div className="text-center space-y-4 py-2 sm:py-4">
           <p className="text-lg sm:text-xl">
-            Bitte lesen Sie den Text und beantworten Sie die danach gestellten Fragen.
+            Bitte lesen Sie den Text und beantworten Sie die danach gestellten Fragen (~10-15min).
           </p>
           <p className="text-sm sm:text-base text-gray-600">
             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige
