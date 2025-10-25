@@ -571,7 +571,7 @@ export default function ReadingStudyApp() {
       <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         <div className="text-center space-y-4 py-2 sm:py-4">
           <p className="text-lg sm:text-xl">
-            Die Studie wird ca. 10-15min Zeit in Anspruch nehmen. Bitte nehmen Sie nur teil, wenn Sie ihn in einem Durchgang abschließen können. Lesen Sie den Text aufmerksam und beantworten Sie danach die gestellten Fragen.
+            Die Teilnahme an der Studie wird ca. 10-15min Zeit in Anspruch nehmen. Bitte nehmen Sie nur teil, wenn Sie ihn in einem Durchgang abschließen können.
           </p>
           <p className="text-sm sm:text-base text-gray-600">
             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige
