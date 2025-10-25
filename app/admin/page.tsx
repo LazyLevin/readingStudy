@@ -40,7 +40,7 @@ import {
   CheckCircle,
   BarChart3,
   PieChartIcon,
-  ScatterChartIcon as Scatter3D,
+  Scale3D as Scatter3D,
   LogOut,
   Lock,
 } from "lucide-react"
@@ -475,15 +475,17 @@ export default function AdminDashboard() {
     normalReadingParticipants: participants.filter((p) => p.testGroup === 4).length,
   }
 
-  // Prepare chart data
-  const chartData: ChartData[] = participants.map((p, index) => ({
-    name: p.nickname || `Participant ${index + 1}`,
-    phase1Time: p.phase1Time,
-    phase2Time: p.phase2Time,
-    phase1Score: p.phase1Score,
-    phase2Score: p.phase2Score,
-    improvement: p.improvement,
-  }))
+  // Prepare chart data with null checks
+  const chartData: ChartData[] = participants
+    .filter((p) => p && p.phase1Time && p.phase2Time) // Filter out invalid data
+    .map((p, index) => ({
+      name: p.nickname || `Participant ${index + 1}`,
+      phase1Time: Number(p.phase1Time) || 0,
+      phase2Time: Number(p.phase2Time) || 0,
+      phase1Score: Number(p.phase1Score) || 0,
+      phase2Score: Number(p.phase2Score) || 0,
+      improvement: Number(p.improvement) || 0,
+    }))
 
   const pieData = [
     { name: "Group 1 (Skimming)", value: participants.filter((p) => p.testGroup === 1).length },
@@ -577,7 +579,7 @@ export default function AdminDashboard() {
             <p className="text-gray-600">Analytics and participant management</p>
             <p className="text-sm text-gray-500">Logged in as: {user.email}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {firebaseStatus === "available" && (
               <Badge variant="default" className="bg-green-600">
                 <CheckCircle className="h-3 w-3 mr-1" />
@@ -596,15 +598,15 @@ export default function AdminDashboard() {
                 Loading Data
               </Badge>
             )}
-            <Button onClick={handleRefresh} disabled={isRefreshing} variant="outline">
+            <Button onClick={handleRefresh} disabled={isRefreshing} variant="outline" size="sm">
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button onClick={exportData} disabled={participants.length === 0}>
+            <Button onClick={exportData} disabled={participants.length === 0} size="sm">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <Button onClick={handleLogout} variant="outline">
+            <Button onClick={handleLogout} variant="outline" size="sm">
               <LogOut className="h-4 w-4 mr-2" />
               Logout
             </Button>
@@ -722,51 +724,61 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
 
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    {selectedChart === "bar" && (
-                      <BarChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="phase1Time" fill="#8884d8" name="Phase 1 Time (s)" />
-                        <Bar dataKey="phase2Time" fill="#82ca9d" name="Phase 2 Time (s)" />
-                      </BarChart>
-                    )}
+                {chartData.length === 0 ? (
+                  <div className="h-96 flex items-center justify-center border rounded-lg bg-gray-50">
+                    <div className="text-center">
+                      <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500">No data available for charts</p>
+                      <p className="text-sm text-gray-400">Complete some study sessions to see visualizations</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {selectedChart === "bar" && (
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="phase1Time" fill="#8884d8" name="Phase 1 Time (s)" />
+                          <Bar dataKey="phase2Time" fill="#82ca9d" name="Phase 2 Time (s)" />
+                        </BarChart>
+                      )}
 
-                    {selectedChart === "scatter" && (
-                      <ScatterChart data={chartData}>
-                        <CartesianGrid />
-                        <XAxis dataKey="phase1Time" name="Phase 1 Time" unit="s" />
-                        <YAxis dataKey="phase2Time" name="Phase 2 Time" unit="s" />
-                        <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                        <Scatter name="Participants" data={chartData} fill="#8884d8" />
-                      </ScatterChart>
-                    )}
+                      {selectedChart === "scatter" && (
+                        <ScatterChart>
+                          <CartesianGrid />
+                          <XAxis dataKey="phase1Time" name="Phase 1 Time" unit="s" type="number" />
+                          <YAxis dataKey="phase2Time" name="Phase 2 Time" unit="s" type="number" />
+                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                          <Scatter name="Participants" data={chartData} fill="#8884d8" />
+                        </ScatterChart>
+                      )}
 
-                    {selectedChart === "pie" && (
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    )}
-                  </ResponsiveContainer>
-                </div>
+                      {selectedChart === "pie" && pieData.length > 0 && (
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {pieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -780,7 +792,9 @@ export default function AdminDashboard() {
               <CardContent>
                 {participants.length === 0 ? (
                   <div className="text-center py-8">
+                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-500">No participant data available</p>
+                    <p className="text-sm text-gray-400">Participant data will appear here after study sessions</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
