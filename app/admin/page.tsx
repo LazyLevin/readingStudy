@@ -537,7 +537,7 @@ export default function AdminDashboard() {
                   type="email"
                   value={loginData.email}
                   onChange={(e) => setLoginData((prev) => ({ ...prev, email: e.target.value }))}
-                  placeholder="krieger.levin@gmail.com"
+                  placeholder="your.email@gmail.com"
                   required
                 />
               </div>
