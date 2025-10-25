@@ -59,7 +59,7 @@
     "input-otp": "latest",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.454.0",
-    "next": "14.2.16",
+    "next": "14.2.5",
     "next-themes": "latest",
     "postcss": "^8",
     "react": "^18",
@@ -80,8 +80,6 @@
   "devDependencies": {
     "@types/html2canvas": "^1.0.0",
     "@types/node": "^22",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
     "postcss": "^8.5",
     "typescript": "^5"
   }
