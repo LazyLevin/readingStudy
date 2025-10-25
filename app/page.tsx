@@ -732,30 +732,7 @@ export default function ReadingStudyApp() {
           Vielen Dank für Ihre Teilnahme.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          <div className="text-center p-4 sm:p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
-            <h3 className="font-semibold text-base sm:text-lg mb-2 text-blue-800">Phase 1</h3>
-            <p className="text-2xl sm:text-3xl font-bold text-blue-600">{readingTimes[0]?.toFixed(1)}s</p>
-            <p className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-4">Lesezeit</p>
-            <p className="text-lg sm:text-xl font-semibold text-blue-800">{scores[0]}/10</p>
-            <p className="text-xs sm:text-sm text-gray-500">Richtige Antworten</p>
-          </div>
-          <div className="text-center p-4 sm:p-6 border-2 border-green-100 rounded-lg bg-green-50">
-            <h3 className="font-semibold text-base sm:text-lg mb-2 text-green-800">Phase 2</h3>
-            <p className="text-2xl sm:text-3xl font-bold text-green-600">{readingTimes[1]?.toFixed(1)}s</p>
-            <p className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-4">Lesezeit</p>
-            <p className="text-lg sm:text-xl font-semibold text-green-800">{scores[1]}/10</p>
-            <p className="text-xs sm:text-sm text-gray-500">Richtige Antworten</p>
-          </div>
-        </div>
-        <div className="text-center p-3 sm:p-4 bg-gray-50 rounded-lg mt-4">
-          <p className="text-gray-600 text-sm sm:text-base">
-            Ihre Ergebnisse wurden gespeichert. Vielen Dank für Ihre Teilnahme!
-          </p>
-        </div>
-        
-      </CardContent>
+      
     </Card>
   )
 
