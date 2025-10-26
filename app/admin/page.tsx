@@ -28,21 +28,27 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  ComposedChart,
+  Area,
 } from "recharts"
 import {
   Users,
-  Clock,
   Target,
   TrendingUp,
   Download,
   RefreshCw,
   AlertCircle,
   CheckCircle,
-  BarChart3,
-  PieChartIcon,
-  Scale3D as Scatter3D,
   LogOut,
   Lock,
+  Activity,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
@@ -71,7 +77,13 @@ interface ChartData {
   improvement: number
 }
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#FF6B9D"]
+const TECHNIQUE_COLORS = {
+  1: "#3B82F6", // Blue - Skimming
+  2: "#10B981", // Green - Pointer
+  3: "#F59E0B", // Amber - Subvocalization
+  4: "#EF4444", // Red - Normal
+}
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -80,7 +92,6 @@ export default function AdminDashboard() {
   const [participants, setParticipants] = useState<ParticipantData[]>([])
   const [dataLoading, setDataLoading] = useState(false)
   const [firebaseStatus, setFirebaseStatus] = useState<"checking" | "available" | "unavailable">("checking")
-  const [selectedChart, setSelectedChart] = useState<"bar" | "scatter" | "pie">("bar")
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Login form state
@@ -123,7 +134,6 @@ export default function AdminDashboard() {
       } else {
         setFirebaseStatus("unavailable")
         setLoading(false)
-        // In demo mode, simulate being logged in
         setUser({ email: "demo@example.com" } as User)
         loadMockData()
       }
@@ -188,7 +198,6 @@ export default function AdminDashboard() {
     setDataLoading(true)
 
     try {
-      // Try to load from users collection with results subcollections
       const usersSnapshot = await getDocs(collection(db, "users"))
       const participantMap = new Map<string, Partial<ParticipantData>>()
 
@@ -196,7 +205,6 @@ export default function AdminDashboard() {
         const userData = userDoc.data()
         const userId = userDoc.id
 
-        // Get results subcollection for this user
         try {
           const resultsSnapshot = await getDocs(collection(db, "users", userId, "results"))
 
@@ -212,7 +220,6 @@ export default function AdminDashboard() {
             }
           })
 
-          // Only add participants with both phases
           if (phase1Data && phase2Data) {
             const participant: ParticipantData = {
               id: userId,
@@ -247,7 +254,6 @@ export default function AdminDashboard() {
           description: `Loaded ${completeParticipants.length} participants from Firebase`,
         })
       } else {
-        // Fallback to reading_study_results collection
         try {
           const resultsQuery = query(collection(db, "reading_study_results"), orderBy("timestamp", "desc"))
           const querySnapshot = await getDocs(resultsQuery)
@@ -388,7 +394,6 @@ export default function AdminDashboard() {
       const timestamp = new Date()
       const technique = manualEntry.testGroup <= 3 ? "Speed Reading" : "Normal Reading"
 
-      // Add phase 1 result
       await addDoc(collection(db, "reading_study_results"), {
         sessionId,
         nickname: manualEntry.nickname,
@@ -402,7 +407,6 @@ export default function AdminDashboard() {
         technique,
       })
 
-      // Add phase 2 result
       await addDoc(collection(db, "reading_study_results"), {
         sessionId,
         nickname: manualEntry.nickname,
@@ -416,7 +420,6 @@ export default function AdminDashboard() {
         technique,
       })
 
-      // Reset form
       setManualEntry({
         nickname: "",
         testGroup: 1,
@@ -426,7 +429,6 @@ export default function AdminDashboard() {
         phase2Score: "",
       })
 
-      // Refresh data
       await loadParticipantData()
 
       toast({
@@ -445,10 +447,10 @@ export default function AdminDashboard() {
 
   const exportData = () => {
     const csvContent = [
-      "Nickname,Test Group,Technique,Phase 1 Time,Phase 1 Score,Phase 2 Time,Phase 2 Score,Improvement %,Timestamp",
+      "Nickname,Test Group,Technique,Phase 1 Time,Phase 1 Score,Phase 2 Time,Phase 2 Score,Improvement %,Phase 1 Comprehension,Phase 2 Comprehension,Timestamp",
       ...participants.map(
         (p) =>
-          `${p.nickname},${p.testGroup},${p.technique},${p.phase1Time},${p.phase1Score},${p.phase2Time},${p.phase2Score},${p.improvement.toFixed(2)},${p.timestamp.toISOString()}`,
+          `${p.nickname},${p.testGroup},${p.technique},${p.phase1Time},${p.phase1Score},${p.phase2Time},${p.phase2Score},${p.improvement.toFixed(2)},${((p.phase1Score / 10) * 100).toFixed(1)}%,${((p.phase2Score / 10) * 100).toFixed(1)}%,${p.timestamp.toISOString()}`,
       ),
     ].join("\n")
 
@@ -473,11 +475,19 @@ export default function AdminDashboard() {
       participants.length > 0 ? participants.reduce((sum, p) => sum + p.improvement, 0) / participants.length : 0,
     speedReadingParticipants: participants.filter((p) => p.testGroup <= 3).length,
     normalReadingParticipants: participants.filter((p) => p.testGroup === 4).length,
+    avgPhase1Comprehension:
+      participants.length > 0
+        ? (participants.reduce((sum, p) => sum + p.phase1Score, 0) / participants.length / 10) * 100
+        : 0,
+    avgPhase2Comprehension:
+      participants.length > 0
+        ? (participants.reduce((sum, p) => sum + p.phase2Score, 0) / participants.length / 10) * 100
+        : 0,
   }
 
   // Prepare chart data with null checks
   const chartData: ChartData[] = participants
-    .filter((p) => p && p.phase1Time && p.phase2Time) // Filter out invalid data
+    .filter((p) => p && p.phase1Time && p.phase2Time)
     .map((p, index) => ({
       name: p.nickname || `Participant ${index + 1}`,
       phase1Time: Number(p.phase1Time) || 0,
@@ -485,6 +495,109 @@ export default function AdminDashboard() {
       phase1Score: Number(p.phase1Score) || 0,
       phase2Score: Number(p.phase2Score) || 0,
       improvement: Number(p.improvement) || 0,
+    }))
+
+  // Group data by technique
+  const techniqueGroups = [
+    { name: "Group 1: Skimming", group: 1 },
+    { name: "Group 2: Pointer", group: 2 },
+    { name: "Group 3: Subvocalization", group: 3 },
+    { name: "Group 4: Normal", group: 4 },
+  ]
+
+  const techniqueComparisonData = techniqueGroups
+    .map((technique) => {
+      const groupParticipants = participants.filter((p) => p.testGroup === technique.group)
+      const count = groupParticipants.length
+
+      if (count === 0) {
+        return {
+          name: technique.name,
+          avgTimeImprovement: 0,
+          avgPhase1Time: 0,
+          avgPhase2Time: 0,
+          avgPhase1Score: 0,
+          avgPhase2Score: 0,
+          count: 0,
+        }
+      }
+
+      return {
+        name: technique.name,
+        avgTimeImprovement: groupParticipants.reduce((sum, p) => sum + p.improvement, 0) / count,
+        avgPhase1Time: groupParticipants.reduce((sum, p) => sum + p.phase1Time, 0) / count,
+        avgPhase2Time: groupParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / count,
+        avgPhase1Score: (groupParticipants.reduce((sum, p) => sum + p.phase1Score, 0) / count / 10) * 100,
+        avgPhase2Score: (groupParticipants.reduce((sum, p) => sum + p.phase2Score, 0) / count / 10) * 100,
+        count,
+      }
+    })
+    .filter((d) => d.count > 0)
+
+  // Comprehension vs Time data
+  const comprehensionVsTimeData = participants
+    .filter((p) => p && p.phase1Time && p.phase2Time)
+    .map((p) => ({
+      name: p.nickname,
+      phase1Time: p.phase1Time,
+      phase2Time: p.phase2Time,
+      phase1Comprehension: (p.phase1Score / 10) * 100,
+      phase2Comprehension: (p.phase2Score / 10) * 100,
+      group: p.testGroup,
+    }))
+
+  // Radar chart data for technique comparison
+  const radarData = techniqueGroups
+    .map((technique) => {
+      const groupParticipants = participants.filter((p) => p.testGroup === technique.group)
+      if (groupParticipants.length === 0) return null
+
+      const avgTimeImprovement = groupParticipants.reduce((sum, p) => sum + p.improvement, 0) / groupParticipants.length
+      const avgComprehensionImprovement =
+        groupParticipants.reduce((sum, p) => sum + (p.phase2Score - p.phase1Score), 0) / groupParticipants.length
+      const avgPhase2Speed =
+        100 - (groupParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / groupParticipants.length / 180) * 100
+
+      return {
+        technique: technique.name.split(":")[1].trim(),
+        timeImprovement: Math.max(0, Math.min(100, avgTimeImprovement)),
+        comprehensionMaintained: Math.max(
+          0,
+          Math.min(
+            100,
+            (groupParticipants.reduce((sum, p) => sum + p.phase2Score, 0) / groupParticipants.length / 10) * 100,
+          ),
+        ),
+        speed: Math.max(0, Math.min(100, avgPhase2Speed)),
+        consistency: Math.max(
+          0,
+          Math.min(
+            100,
+            100 -
+              (groupParticipants.reduce((sum, p) => sum + Math.abs(p.phase1Score - p.phase2Score), 0) /
+                groupParticipants.length) *
+                10,
+          ),
+        ),
+      }
+    })
+    .filter((d) => d !== null)
+
+  // Score distribution data
+  const scoreDistributionData = Array.from({ length: 11 }, (_, i) => ({
+    score: i,
+    phase1Count: participants.filter((p) => p.phase1Score === i).length,
+    phase2Count: participants.filter((p) => p.phase2Score === i).length,
+  }))
+
+  // Time efficiency data (comprehension per second)
+  const efficiencyData = participants
+    .filter((p) => p && p.phase1Time && p.phase2Time)
+    .map((p) => ({
+      name: p.nickname,
+      phase1Efficiency: (p.phase1Score / p.phase1Time) * 100,
+      phase2Efficiency: (p.phase2Score / p.phase2Time) * 100,
+      group: p.testGroup,
     }))
 
   const pieData = [
@@ -505,7 +618,6 @@ export default function AdminDashboard() {
     )
   }
 
-  // Show login form if user is not authenticated
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -576,7 +688,7 @@ export default function AdminDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Reading Study Dashboard</h1>
-            <p className="text-gray-600">Analytics and participant management</p>
+            <p className="text-gray-600">Comprehensive analytics and participant management</p>
             <p className="text-sm text-gray-500">Logged in as: {user.email}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -651,33 +763,23 @@ export default function AdminDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Phase 1 Time</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Phase 1 Comprehension</CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {participants.length > 0
-                  ? (participants.reduce((sum, p) => sum + p.phase1Time, 0) / participants.length).toFixed(1)
-                  : 0}
-                s
-              </div>
-              <p className="text-xs text-muted-foreground">Initial reading speed</p>
+              <div className="text-2xl font-bold">{stats.avgPhase1Comprehension.toFixed(1)}%</div>
+              <p className="text-xs text-muted-foreground">Before training</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Phase 2 Time</CardTitle>
-              <Target className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Phase 2 Comprehension</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {participants.length > 0
-                  ? (participants.reduce((sum, p) => sum + p.phase2Time, 0) / participants.length).toFixed(1)
-                  : 0}
-                s
-              </div>
-              <p className="text-xs text-muted-foreground">After technique training</p>
+              <div className="text-2xl font-bold">{stats.avgPhase2Comprehension.toFixed(1)}%</div>
+              <p className="text-xs text-muted-foreground">After training</p>
             </CardContent>
           </Card>
         </div>
@@ -690,97 +792,328 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="analytics" className="space-y-6">
-            {/* Chart Controls */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Data Visualization</CardTitle>
-                <CardDescription>Choose how to view the participant data</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2 mb-4">
-                  <Button
-                    variant={selectedChart === "bar" ? "default" : "outline"}
-                    onClick={() => setSelectedChart("bar")}
-                    size="sm"
-                  >
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Bar Chart
-                  </Button>
-                  <Button
-                    variant={selectedChart === "scatter" ? "default" : "outline"}
-                    onClick={() => setSelectedChart("scatter")}
-                    size="sm"
-                  >
-                    <Scatter3D className="h-4 w-4 mr-2" />
-                    Scatter Plot
-                  </Button>
-                  <Button
-                    variant={selectedChart === "pie" ? "default" : "outline"}
-                    onClick={() => setSelectedChart("pie")}
-                    size="sm"
-                  >
-                    <PieChartIcon className="h-4 w-4 mr-2" />
-                    Pie Chart
-                  </Button>
-                </div>
-
-                {chartData.length === 0 ? (
-                  <div className="h-96 flex items-center justify-center border rounded-lg bg-gray-50">
-                    <div className="text-center">
-                      <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-500">No data available for charts</p>
-                      <p className="text-sm text-gray-400">Complete some study sessions to see visualizations</p>
-                    </div>
+            {chartData.length === 0 ? (
+              <Card>
+                <CardContent className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500">No data available for analysis</p>
+                    <p className="text-sm text-gray-400">Complete some study sessions to see visualizations</p>
                   </div>
-                ) : (
-                  <div className="h-96">
-                    <ResponsiveContainer width="100%" height="100%">
-                      {selectedChart === "bar" && (
-                        <BarChart data={chartData}>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Technique Comparison Overview */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Technique Comparison Overview</CardTitle>
+                    <CardDescription>
+                      Comparing all four reading techniques across key performance metrics
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={techniqueComparisonData}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
+                          <XAxis dataKey="name" angle={-15} textAnchor="end" height={80} />
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Bar dataKey="phase1Time" fill="#8884d8" name="Phase 1 Time (s)" />
-                          <Bar dataKey="phase2Time" fill="#82ca9d" name="Phase 2 Time (s)" />
+                          <Bar dataKey="avgTimeImprovement" fill="#3B82F6" name="Avg Time Improvement (%)" />
+                          <Bar dataKey="avgPhase1Score" fill="#10B981" name="Avg Phase 1 Score (%)" />
+                          <Bar dataKey="avgPhase2Score" fill="#F59E0B" name="Avg Phase 2 Score (%)" />
                         </BarChart>
-                      )}
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                      {selectedChart === "scatter" && (
+                {/* Reading Speed Comparison */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Reading Speed by Technique</CardTitle>
+                      <CardDescription>Average reading time before and after training</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={techniqueComparisonData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-15} textAnchor="end" height={80} />
+                            <YAxis label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="avgPhase1Time" fill="#EF4444" name="Phase 1 Time" />
+                            <Bar dataKey="avgPhase2Time" fill="#10B981" name="Phase 2 Time" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Comprehension Rate by Technique</CardTitle>
+                      <CardDescription>Accuracy scores across different methods</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={techniqueComparisonData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-15} textAnchor="end" height={80} />
+                            <YAxis
+                              domain={[0, 100]}
+                              label={{ value: "Score (%)", angle: -90, position: "insideLeft" }}
+                            />
+                            <Tooltip />
+                            <Legend />
+                            <Line
+                              type="monotone"
+                              dataKey="avgPhase1Score"
+                              stroke="#8B5CF6"
+                              strokeWidth={2}
+                              name="Phase 1"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="avgPhase2Score"
+                              stroke="#10B981"
+                              strokeWidth={2}
+                              name="Phase 2"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Comprehension vs Reading Speed */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Comprehension vs Reading Speed Correlation</CardTitle>
+                    <CardDescription>
+                      Analyzing the relationship between reading speed and comprehension accuracy
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart>
                           <CartesianGrid />
-                          <XAxis dataKey="phase1Time" name="Phase 1 Time" unit="s" type="number" />
-                          <YAxis dataKey="phase2Time" name="Phase 2 Time" unit="s" type="number" />
+                          <XAxis
+                            type="number"
+                            dataKey="phase2Time"
+                            name="Reading Time"
+                            unit="s"
+                            label={{ value: "Phase 2 Reading Time (seconds)", position: "insideBottom", offset: -5 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="phase2Comprehension"
+                            name="Comprehension"
+                            unit="%"
+                            label={{ value: "Phase 2 Comprehension (%)", angle: -90, position: "insideLeft" }}
+                          />
                           <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                          <Scatter name="Participants" data={chartData} fill="#8884d8" />
+                          <Legend />
+                          <Scatter
+                            name="Group 1: Skimming"
+                            data={comprehensionVsTimeData.filter((d) => d.group === 1)}
+                            fill="#3B82F6"
+                          />
+                          <Scatter
+                            name="Group 2: Pointer"
+                            data={comprehensionVsTimeData.filter((d) => d.group === 2)}
+                            fill="#10B981"
+                          />
+                          <Scatter
+                            name="Group 3: Subvocalization"
+                            data={comprehensionVsTimeData.filter((d) => d.group === 3)}
+                            fill="#F59E0B"
+                          />
+                          <Scatter
+                            name="Group 4: Normal"
+                            data={comprehensionVsTimeData.filter((d) => d.group === 4)}
+                            fill="#EF4444"
+                          />
                         </ScatterChart>
-                      )}
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                      {selectedChart === "pie" && pieData.length > 0 && (
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {pieData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
+                {/* Radar Chart and Efficiency */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Technique Performance Radar</CardTitle>
+                      <CardDescription>Multi-dimensional comparison of reading techniques</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart data={radarData}>
+                            <PolarGrid />
+                            <PolarAngleAxis dataKey="technique" />
+                            <PolarRadiusAxis angle={90} domain={[0, 100]} />
+                            <Radar
+                              name="Time Improvement"
+                              dataKey="timeImprovement"
+                              stroke="#3B82F6"
+                              fill="#3B82F6"
+                              fillOpacity={0.3}
+                            />
+                            <Radar
+                              name="Comprehension"
+                              dataKey="comprehensionMaintained"
+                              stroke="#10B981"
+                              fill="#10B981"
+                              fillOpacity={0.3}
+                            />
+                            <Radar name="Speed" dataKey="speed" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.3} />
+                            <Radar
+                              name="Consistency"
+                              dataKey="consistency"
+                              stroke="#8B5CF6"
+                              fill="#8B5CF6"
+                              fillOpacity={0.3}
+                            />
+                            <Legend />
+                            <Tooltip />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Reading Efficiency Score</CardTitle>
+                      <CardDescription>Comprehension points per second (higher is better)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={efficiencyData.slice(0, 15)}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+                            <YAxis label={{ value: "Efficiency Score", angle: -90, position: "insideLeft" }} />
+                            <Tooltip />
+                            <Legend />
+                            <Area
+                              type="monotone"
+                              dataKey="phase1Efficiency"
+                              fill="#EF4444"
+                              stroke="#EF4444"
+                              fillOpacity={0.3}
+                              name="Phase 1"
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="phase2Efficiency"
+                              fill="#10B981"
+                              stroke="#10B981"
+                              fillOpacity={0.3}
+                              name="Phase 2"
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Score Distribution and Participant Distribution */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Score Distribution</CardTitle>
+                      <CardDescription>Frequency of comprehension scores (0-10)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={scoreDistributionData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="score" label={{ value: "Score", position: "insideBottom", offset: -5 }} />
+                            <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="phase1Count" fill="#8B5CF6" name="Phase 1" />
+                            <Bar dataKey="phase2Count" fill="#10B981" name="Phase 2" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Participant Distribution by Technique</CardTitle>
+                      <CardDescription>Sample size for each reading method</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          {pieData.length > 0 && (
+                            <PieChart>
+                              <Pie
+                                data={pieData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, percent, value }) =>
+                                  `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
+                                }
+                                outerRadius={100}
+                                fill="#8884d8"
+                                dataKey="value"
+                              >
+                                {pieData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Individual Performance Timeline */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Individual Performance Comparison</CardTitle>
+                    <CardDescription>Phase 1 vs Phase 2 reading times for each participant</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData.slice(0, 20)} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            type="number"
+                            label={{ value: "Time (seconds)", position: "insideBottom", offset: -5 }}
+                          />
+                          <YAxis type="category" dataKey="name" width={100} />
                           <Tooltip />
-                        </PieChart>
-                      )}
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                          <Legend />
+                          <Bar dataKey="phase1Time" fill="#EF4444" name="Phase 1 Time" />
+                          <Bar dataKey="phase2Time" fill="#10B981" name="Phase 2 Time" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="participants" className="space-y-6">
@@ -812,7 +1145,9 @@ export default function AdminDashboard() {
                           </div>
                           <div>
                             <p className="text-gray-500">Phase 1 Score</p>
-                            <p className="font-medium">{participant.phase1Score}/10</p>
+                            <p className="font-medium">
+                              {participant.phase1Score}/10 ({((participant.phase1Score / 10) * 100).toFixed(0)}%)
+                            </p>
                           </div>
                           <div>
                             <p className="text-gray-500">Phase 2 Time</p>
@@ -820,14 +1155,16 @@ export default function AdminDashboard() {
                           </div>
                           <div>
                             <p className="text-gray-500">Phase 2 Score</p>
-                            <p className="font-medium">{participant.phase2Score}/10</p>
+                            <p className="font-medium">
+                              {participant.phase2Score}/10 ({((participant.phase2Score / 10) * 100).toFixed(0)}%)
+                            </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-4">
                           <div className="flex-1">
                             <div className="flex justify-between text-sm mb-1">
-                              <span>Improvement</span>
+                              <span>Time Improvement</span>
                               <span>{participant.improvement.toFixed(1)}%</span>
                             </div>
                             <Progress value={Math.max(0, Math.min(100, participant.improvement))} className="h-2" />
