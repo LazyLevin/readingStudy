@@ -607,6 +607,58 @@ export default function AdminDashboard() {
     { name: "Group 4 (Normal)", value: participants.filter((p) => p.testGroup === 4).length },
   ].filter((item) => item.value > 0)
 
+  const improvementByMethodData = techniqueGroups
+    .map((technique) => {
+      const groupParticipants = participants.filter((p) => p.testGroup === technique.group)
+      if (groupParticipants.length === 0) return null
+
+      const avgTimeImprovement = groupParticipants.reduce((sum, p) => sum + p.improvement, 0) / groupParticipants.length
+      const avgScoreImprovement =
+        groupParticipants.reduce((sum, p) => sum + (p.phase2Score - p.phase1Score), 0) / groupParticipants.length
+
+      return {
+        name: technique.name.split(":")[1].trim(),
+        timeImprovement: avgTimeImprovement,
+        scoreImprovement: avgScoreImprovement,
+        count: groupParticipants.length,
+      }
+    })
+    .filter((d) => d !== null)
+
+  const initialSpeedVsImprovementData = participants
+    .filter((p) => p && p.phase1Time && p.phase2Time)
+    .map((p) => ({
+      name: p.nickname,
+      initialSpeed: p.phase1Time,
+      improvement: p.improvement,
+      group: p.testGroup,
+    }))
+
+  const boxplotData = techniqueGroups
+    .map((technique) => {
+      const groupParticipants = participants.filter((p) => p.testGroup === technique.group)
+      if (groupParticipants.length === 0) return null
+
+      const phase1Times = groupParticipants.map((p) => p.phase1Time).sort((a, b) => a - b)
+      const phase2Times = groupParticipants.map((p) => p.phase2Time).sort((a, b) => a - b)
+
+      const getQuartiles = (arr: number[]) => {
+        const q1 = arr[Math.floor(arr.length * 0.25)]
+        const median = arr[Math.floor(arr.length * 0.5)]
+        const q3 = arr[Math.floor(arr.length * 0.75)]
+        const min = arr[0]
+        const max = arr[arr.length - 1]
+        return { min, q1, median, q3, max }
+      }
+
+      return {
+        name: technique.name.split(":")[1].trim(),
+        phase1: getQuartiles(phase1Times),
+        phase2: getQuartiles(phase2Times),
+      }
+    })
+    .filter((d) => d !== null)
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -791,7 +843,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="data-entry">Data Entry</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="analytics" className="space-y-6">
+          <TabsContent value="analytics" className="space-y-8">
             {chartData.length === 0 ? (
               <Card>
                 <CardContent className="flex items-center justify-center h-96">
@@ -830,8 +882,35 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
 
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Average Improvement (%) per Method</CardTitle>
+                    <CardDescription>
+                      Which technique shows the greatest progress in reading speed and comprehension
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={improvementByMethodData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis label={{ value: "Improvement (%)", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="timeImprovement" fill="#3B82F6" name="Time Improvement (%)" />
+                          <Bar dataKey="scoreImprovement" fill="#10B981" name="Score Improvement (points)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-600">
+                      <p>Sample sizes: {improvementByMethodData.map((d) => `${d.name}: n=${d.count}`).join(", ")}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Reading Speed Comparison */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <Card>
                     <CardHeader>
                       <CardTitle>Reading Speed by Technique</CardTitle>
@@ -892,6 +971,58 @@ export default function AdminDashboard() {
                   </Card>
                 </div>
 
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Reading Speed Distribution by Method</CardTitle>
+                    <CardDescription>
+                      Shows spread, median, and outliers for each technique (box = Q1-Q3, line = median, whiskers =
+                      min-max)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={boxplotData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }} />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload
+                                return (
+                                  <div className="bg-white p-3 border rounded shadow-lg">
+                                    <p className="font-semibold">{data.name}</p>
+                                    <p className="text-sm">Phase 1:</p>
+                                    <p className="text-xs">Min: {data.phase1.min.toFixed(1)}s</p>
+                                    <p className="text-xs">Q1: {data.phase1.q1.toFixed(1)}s</p>
+                                    <p className="text-xs">Median: {data.phase1.median.toFixed(1)}s</p>
+                                    <p className="text-xs">Q3: {data.phase1.q3.toFixed(1)}s</p>
+                                    <p className="text-xs">Max: {data.phase1.max.toFixed(1)}s</p>
+                                    <p className="text-sm mt-2">Phase 2:</p>
+                                    <p className="text-xs">Min: {data.phase2.min.toFixed(1)}s</p>
+                                    <p className="text-xs">Q1: {data.phase2.q1.toFixed(1)}s</p>
+                                    <p className="text-xs">Median: {data.phase2.median.toFixed(1)}s</p>
+                                    <p className="text-xs">Q3: {data.phase2.q3.toFixed(1)}s</p>
+                                    <p className="text-xs">Max: {data.phase2.max.toFixed(1)}s</p>
+                                  </div>
+                                )
+                              }
+                              return null
+                            }}
+                          />
+                          <Legend />
+                          <Bar dataKey="phase1.median" fill="#EF4444" name="Phase 1 Median" />
+                          <Bar dataKey="phase2.median" fill="#10B981" name="Phase 2 Median" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-600">
+                      <p>Note: Hover over bars to see full distribution statistics (min, Q1, median, Q3, max)</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Comprehension vs Reading Speed */}
                 <Card>
                   <CardHeader>
@@ -947,8 +1078,68 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
 
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Initial Speed vs. Improvement Correlation</CardTitle>
+                    <CardDescription>
+                      Do slower readers benefit more from speed reading training? (Shows if initial reading speed
+                      predicts improvement)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart>
+                          <CartesianGrid />
+                          <XAxis
+                            type="number"
+                            dataKey="initialSpeed"
+                            name="Initial Reading Time"
+                            unit="s"
+                            label={{ value: "Phase 1 Reading Time (seconds)", position: "insideBottom", offset: -5 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="improvement"
+                            name="Improvement"
+                            unit="%"
+                            label={{ value: "Time Improvement (%)", angle: -90, position: "insideLeft" }}
+                          />
+                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                          <Legend />
+                          <Scatter
+                            name="Group 1: Skimming"
+                            data={initialSpeedVsImprovementData.filter((d) => d.group === 1)}
+                            fill="#3B82F6"
+                          />
+                          <Scatter
+                            name="Group 2: Pointer"
+                            data={initialSpeedVsImprovementData.filter((d) => d.group === 2)}
+                            fill="#10B981"
+                          />
+                          <Scatter
+                            name="Group 3: Subvocalization"
+                            data={initialSpeedVsImprovementData.filter((d) => d.group === 3)}
+                            fill="#F59E0B"
+                          />
+                          <Scatter
+                            name="Group 4: Normal"
+                            data={initialSpeedVsImprovementData.filter((d) => d.group === 4)}
+                            fill="#EF4444"
+                          />
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-600">
+                      <p>
+                        Interpretation: If points trend upward-right, slower initial readers benefit more from training.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Radar Chart and Efficiency */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <Card>
                     <CardHeader>
                       <CardTitle>Technique Performance Radar</CardTitle>
@@ -1029,7 +1220,7 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Score Distribution and Participant Distribution */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <Card>
                     <CardHeader>
                       <CardTitle>Score Distribution</CardTitle>
