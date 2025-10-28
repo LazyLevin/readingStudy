@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { Progress } from "@/components/ui/progress"
 import {
   BarChart,
   Bar,
@@ -659,6 +658,115 @@ export default function AdminDashboard() {
     })
     .filter((d) => d !== null)
 
+  const speedReadingParticipants = participants.filter((p) => p.testGroup <= 3)
+  const controlParticipants = participants.filter((p) => p.testGroup === 4)
+
+  const speedReadingVsControlData = [
+    {
+      group: "Speed Reading\n(Groups 1-3)",
+      avgTimeImprovement:
+        speedReadingParticipants.length > 0
+          ? speedReadingParticipants.reduce((sum, p) => sum + p.improvement, 0) / speedReadingParticipants.length
+          : 0,
+      avgPhase1Time:
+        speedReadingParticipants.length > 0
+          ? speedReadingParticipants.reduce((sum, p) => sum + p.phase1Time, 0) / speedReadingParticipants.length
+          : 0,
+      avgPhase2Time:
+        speedReadingParticipants.length > 0
+          ? speedReadingParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / speedReadingParticipants.length
+          : 0,
+      avgPhase1Score:
+        speedReadingParticipants.length > 0
+          ? (speedReadingParticipants.reduce((sum, p) => sum + p.phase1Score, 0) /
+              speedReadingParticipants.length /
+              10) *
+            100
+          : 0,
+      avgPhase2Score:
+        speedReadingParticipants.length > 0
+          ? (speedReadingParticipants.reduce((sum, p) => sum + p.phase2Score, 0) /
+              speedReadingParticipants.length /
+              10) *
+            100
+          : 0,
+      count: speedReadingParticipants.length,
+    },
+    {
+      group: "No Method\n(Group 4)",
+      avgTimeImprovement:
+        controlParticipants.length > 0
+          ? controlParticipants.reduce((sum, p) => sum + p.improvement, 0) / controlParticipants.length
+          : 0,
+      avgPhase1Time:
+        controlParticipants.length > 0
+          ? controlParticipants.reduce((sum, p) => sum + p.phase1Time, 0) / controlParticipants.length
+          : 0,
+      avgPhase2Time:
+        controlParticipants.length > 0
+          ? controlParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / controlParticipants.length
+          : 0,
+      avgPhase1Score:
+        controlParticipants.length > 0
+          ? (controlParticipants.reduce((sum, p) => sum + p.phase1Score, 0) / controlParticipants.length / 10) * 100
+          : 0,
+      avgPhase2Score:
+        controlParticipants.length > 0
+          ? (controlParticipants.reduce((sum, p) => sum + p.phase2Score, 0) / controlParticipants.length / 10) * 100
+          : 0,
+      count: controlParticipants.length,
+    },
+  ]
+
+  const effectivenessStats = {
+    speedReadingImprovement: speedReadingVsControlData[0].avgTimeImprovement,
+    controlImprovement: speedReadingVsControlData[1].avgTimeImprovement,
+    improvementDifference:
+      speedReadingVsControlData[0].avgTimeImprovement - speedReadingVsControlData[1].avgTimeImprovement,
+    speedReadingComprehensionChange:
+      speedReadingVsControlData[0].avgPhase2Score - speedReadingVsControlData[0].avgPhase1Score,
+    controlComprehensionChange:
+      speedReadingVsControlData[1].avgPhase2Score - speedReadingVsControlData[1].avgPhase1Score,
+  }
+
+  const allParticipantsPhase1Avg =
+    participants.length > 0 ? participants.reduce((sum, p) => sum + p.phase1Time, 0) / participants.length : 0
+
+  const allParticipantsPhase2Avg =
+    participants.length > 0 ? participants.reduce((sum, p) => sum + p.phase2Time, 0) / participants.length : 0
+
+  const allParticipantsPhase1Score =
+    participants.length > 0
+      ? (participants.reduce((sum, p) => sum + p.phase1Score, 0) / participants.length / 10) * 100
+      : 0
+
+  const allParticipantsPhase2Score =
+    participants.length > 0
+      ? (participants.reduce((sum, p) => sum + p.phase2Score, 0) / participants.length / 10) * 100
+      : 0
+
+  const overallTimeImprovement =
+    allParticipantsPhase1Avg > 0
+      ? ((allParticipantsPhase1Avg - allParticipantsPhase2Avg) / allParticipantsPhase1Avg) * 100
+      : 0
+
+  const overallComprehensionChange = allParticipantsPhase2Score - allParticipantsPhase1Score
+
+  const phase1VsPhase2Data = [
+    {
+      phase: "Phase 1\n(Baseline)",
+      avgTime: allParticipantsPhase1Avg,
+      avgScore: allParticipantsPhase1Score,
+      count: participants.length,
+    },
+    {
+      phase: "Phase 2\n(After Training)",
+      avgTime: allParticipantsPhase2Avg,
+      avgScore: allParticipantsPhase2Score,
+      count: participants.length,
+    },
+  ]
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -735,7 +843,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -836,7 +944,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="analytics" className="space-y-6">
+        <Tabs defaultValue="analytics" className="space-y-8">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="participants">Participants</TabsTrigger>
@@ -856,6 +964,198 @@ export default function AdminDashboard() {
               </Card>
             ) : (
               <>
+                <div className="space-y-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Phase 1 vs Phase 2: Overall Effectiveness</h2>
+                    <p className="text-gray-600">
+                      Comparing baseline performance (Phase 1) with post-training performance (Phase 2) across all
+                      participants to evaluate overall study effectiveness
+                    </p>
+                  </div>
+
+                  {/* Overall Effectiveness Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium">Phase 1 Average Time</CardTitle>
+                        <CardDescription>Baseline reading speed (no methods)</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-gray-600">{allParticipantsPhase1Avg.toFixed(1)}s</div>
+                        <p className="text-xs text-muted-foreground mt-1">All participants (n={participants.length})</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium">Phase 2 Average Time</CardTitle>
+                        <CardDescription>After training/practice</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-blue-600">{allParticipantsPhase2Avg.toFixed(1)}s</div>
+                        <p className="text-xs text-muted-foreground mt-1">All participants (n={participants.length})</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium">Overall Improvement</CardTitle>
+                        <CardDescription>Time reduction from Phase 1 to Phase 2</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div
+                          className={`text-3xl font-bold ${overallTimeImprovement > 0 ? "text-green-600" : "text-red-600"}`}
+                        >
+                          {overallTimeImprovement > 0 ? "+" : ""}
+                          {overallTimeImprovement.toFixed(1)}%
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Average across all participants</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Phase 1 vs Phase 2: Reading Time Comparison */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Phase 1 vs Phase 2: Reading Time</CardTitle>
+                      <CardDescription>
+                        Comparing baseline reading time (Phase 1) with post-training reading time (Phase 2) for all
+                        participants
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-96">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={phase1VsPhase2Data}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="phase" />
+                            <YAxis label={{ value: "Average Time (seconds)", angle: -90, position: "insideLeft" }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="avgTime" fill="#3B82F6" name="Average Reading Time (seconds)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-4 text-sm text-gray-600">
+                        <p>
+                          <strong>Time reduction:</strong>{" "}
+                          {(allParticipantsPhase1Avg - allParticipantsPhase2Avg).toFixed(1)} seconds (
+                          {overallTimeImprovement.toFixed(1)}% improvement)
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Phase 1 vs Phase 2: Comprehension Scores */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Phase 1 vs Phase 2: Comprehension Scores</CardTitle>
+                      <CardDescription>
+                        Comparing comprehension accuracy between baseline (Phase 1) and post-training (Phase 2)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-96">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={phase1VsPhase2Data}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="phase" />
+                            <YAxis
+                              domain={[0, 100]}
+                              label={{ value: "Average Comprehension Score (%)", angle: -90, position: "insideLeft" }}
+                            />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="avgScore" fill="#10B981" name="Average Comprehension Score (%)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-4 text-sm text-gray-600">
+                        <p>
+                          <strong>Comprehension change:</strong> {overallComprehensionChange > 0 ? "+" : ""}
+                          {overallComprehensionChange.toFixed(1)}% (
+                          {overallComprehensionChange > 0
+                            ? "improved"
+                            : overallComprehensionChange < 0
+                              ? "decreased"
+                              : "maintained"}
+                          )
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Phase 1 vs Phase 2: Combined View */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Phase 1 vs Phase 2: Combined Performance</CardTitle>
+                      <CardDescription>
+                        Overall view of time improvement and comprehension maintenance from baseline to post-training
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-96">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={phase1VsPhase2Data}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="phase" />
+                            <YAxis
+                              yAxisId="left"
+                              label={{ value: "Reading Time (seconds)", angle: -90, position: "insideLeft" }}
+                            />
+                            <YAxis
+                              yAxisId="right"
+                              orientation="right"
+                              domain={[0, 100]}
+                              label={{ value: "Comprehension (%)", angle: 90, position: "insideRight" }}
+                            />
+                            <Tooltip />
+                            <Legend />
+                            <Bar yAxisId="left" dataKey="avgTime" fill="#3B82F6" name="Reading Time (seconds)" />
+                            <Line
+                              yAxisId="right"
+                              type="monotone"
+                              dataKey="avgScore"
+                              stroke="#10B981"
+                              strokeWidth={3}
+                              name="Comprehension (%)"
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-4 text-sm text-gray-600 space-y-2">
+                        <p className="font-semibold">Key Findings:</p>
+                        <p>
+                          Reading time {overallTimeImprovement > 0 ? "decreased" : "increased"} by{" "}
+                          {Math.abs(overallTimeImprovement).toFixed(1)}% from Phase 1 to Phase 2, while comprehension{" "}
+                          {overallComprehensionChange > 0
+                            ? "improved"
+                            : overallComprehensionChange < 0
+                              ? "decreased"
+                              : "remained stable"}
+                          by {Math.abs(overallComprehensionChange).toFixed(1)} percentage points.
+                        </p>
+                        <p className="text-xs">
+                          <strong>Study Design:</strong> Phase 1 serves as the baseline for all participants (no speed
+                          reading methods). Phase 2 shows results after training/practice (Groups 1-3 with speed reading
+                          techniques, Group 4 with normal reading).
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Separator className="my-8" />
+
+                {/* Individual Technique Analysis */}
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Individual Technique Analysis</h2>
+                  <p className="text-gray-600">
+                    Detailed comparison of each speed reading technique (Skimming, Pointer, Subvocalization) and the
+                    control group
+                  </p>
+                </div>
+
                 {/* Technique Comparison Overview */}
                 <Card>
                   <CardHeader>
@@ -878,33 +1178,6 @@ export default function AdminDashboard() {
                           <Bar dataKey="avgPhase2Score" fill="#F59E0B" name="Avg Phase 2 Score (%)" />
                         </BarChart>
                       </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Average Improvement (%) per Method</CardTitle>
-                    <CardDescription>
-                      Which technique shows the greatest progress in reading speed and comprehension
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-96">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={improvementByMethodData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis label={{ value: "Improvement (%)", angle: -90, position: "insideLeft" }} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="timeImprovement" fill="#3B82F6" name="Time Improvement (%)" />
-                          <Bar dataKey="scoreImprovement" fill="#10B981" name="Score Improvement (points)" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="mt-4 text-sm text-gray-600">
-                      <p>Sample sizes: {improvementByMethodData.map((d) => `${d.name}: n=${d.count}`).join(", ")}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -971,6 +1244,7 @@ export default function AdminDashboard() {
                   </Card>
                 </div>
 
+                {/* Reading Speed Distribution by Method */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Reading Speed Distribution by Method</CardTitle>
@@ -1078,6 +1352,7 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
 
+                {/* Initial Speed vs. Improvement Correlation */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Initial Speed vs. Improvement Correlation</CardTitle>
@@ -1311,179 +1586,212 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Participant Data</CardTitle>
-                <CardDescription>Detailed results from all study participants</CardDescription>
+                <CardDescription>View and manage all participant records</CardDescription>
               </CardHeader>
               <CardContent>
                 {participants.length === 0 ? (
-                  <div className="text-center py-8">
-                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-500">No participant data available</p>
-                    <p className="text-sm text-gray-400">Participant data will appear here after study sessions</p>
+                  <div className="flex flex-col items-center justify-center py-10">
+                    <Users className="h-16 w-16 text-gray-400 mb-4" />
+                    <p className="text-gray-500">No participant data available.</p>
+                    <p className="text-gray-400 text-sm">
+                      Load data from Firebase or enter manually to see participant records.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {participants.map((participant) => (
-                      <div key={participant.id} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-semibold">{participant.nickname}</h3>
-                          <Badge variant="outline">Group {participant.testGroup}</Badge>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <p className="text-gray-500">Phase 1 Time</p>
-                            <p className="font-medium">{participant.phase1Time.toFixed(1)}s</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Phase 1 Score</p>
-                            <p className="font-medium">
-                              {participant.phase1Score}/10 ({((participant.phase1Score / 10) * 100).toFixed(0)}%)
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Phase 2 Time</p>
-                            <p className="font-medium">{participant.phase2Time.toFixed(1)}s</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Phase 2 Score</p>
-                            <p className="font-medium">
-                              {participant.phase2Score}/10 ({((participant.phase2Score / 10) * 100).toFixed(0)}%)
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="flex-1">
-                            <div className="flex justify-between text-sm mb-1">
-                              <span>Time Improvement</span>
-                              <span>{participant.improvement.toFixed(1)}%</span>
-                            </div>
-                            <Progress value={Math.max(0, Math.min(100, participant.improvement))} className="h-2" />
-                          </div>
-                          <div className="text-xs text-gray-500">{participant.timestamp.toLocaleDateString()}</div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Nickname
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Group
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Technique
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Phase 1 Time
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Phase 1 Score
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Phase 2 Time
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Phase 2 Score
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Improvement
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Timestamp
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {participants.map((p) => (
+                          <tr key={p.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {p.nickname}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.testGroup}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.technique}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {p.phase1Time.toFixed(2)}s
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.phase1Score}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {p.phase2Time.toFixed(2)}s
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.phase2Score}</td>
+                            <td
+                              className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${
+                                p.improvement > 0
+                                  ? "text-green-600"
+                                  : p.improvement < 0
+                                    ? "text-red-600"
+                                    : "text-gray-500"
+                              }`}
+                            >
+                              {p.improvement.toFixed(1)}%
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {p.timestamp.toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="data-entry" className="space-y-6">
+          <TabsContent value="data-entry" className="space-y-8">
             <Card>
               <CardHeader>
                 <CardTitle>Manual Data Entry</CardTitle>
-                <CardDescription>Add participant data manually for testing or offline entries</CardDescription>
+                <CardDescription>Add new participant results manually</CardDescription>
               </CardHeader>
               <CardContent>
-                {firebaseStatus === "unavailable" ? (
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Manual data entry requires Firebase connection. Please configure Firebase to use this feature.
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <form onSubmit={handleManualSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="nickname">Participant Nickname</Label>
-                        <Input
-                          id="nickname"
-                          value={manualEntry.nickname}
-                          onChange={(e) => setManualEntry((prev) => ({ ...prev, nickname: e.target.value }))}
-                          placeholder="Enter nickname"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="testGroup">Test Group</Label>
-                        <select
-                          id="testGroup"
-                          value={manualEntry.testGroup}
-                          onChange={(e) =>
-                            setManualEntry((prev) => ({ ...prev, testGroup: Number.parseInt(e.target.value) }))
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          required
-                        >
-                          <option value={1}>Group 1 - Skimming</option>
-                          <option value={2}>Group 2 - Pointer</option>
-                          <option value={3}>Group 3 - Subvocalization</option>
-                          <option value={4}>Group 4 - Normal Reading</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="phase1Time">Phase 1 Time (seconds)</Label>
-                        <Input
-                          id="phase1Time"
-                          type="number"
-                          step="0.1"
-                          value={manualEntry.phase1Time}
-                          onChange={(e) => setManualEntry((prev) => ({ ...prev, phase1Time: e.target.value }))}
-                          placeholder="120.5"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="phase1Score">Phase 1 Score (0-10)</Label>
-                        <Input
-                          id="phase1Score"
-                          type="number"
-                          min="0"
-                          max="10"
-                          value={manualEntry.phase1Score}
-                          onChange={(e) => setManualEntry((prev) => ({ ...prev, phase1Score: e.target.value }))}
-                          placeholder="8"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="phase2Time">Phase 2 Time (seconds)</Label>
-                        <Input
-                          id="phase2Time"
-                          type="number"
-                          step="0.1"
-                          value={manualEntry.phase2Time}
-                          onChange={(e) => setManualEntry((prev) => ({ ...prev, phase2Time: e.target.value }))}
-                          placeholder="95.2"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="phase2Score">Phase 2 Score (0-10)</Label>
-                        <Input
-                          id="phase2Score"
-                          type="number"
-                          min="0"
-                          max="10"
-                          value={manualEntry.phase2Score}
-                          onChange={(e) => setManualEntry((prev) => ({ ...prev, phase2Score: e.target.value }))}
-                          placeholder="9"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <Separator />
-
+                <form onSubmit={handleManualSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-nickname">Nickname</Label>
+                    <Input
+                      id="manual-nickname"
+                      value={manualEntry.nickname}
+                      onChange={(e) => setManualEntry((prev) => ({ ...prev, nickname: e.target.value }))}
+                      placeholder="e.g., Alex"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-test-group">Test Group</Label>
+                    <Input
+                      id="manual-test-group"
+                      type="number"
+                      value={manualEntry.testGroup}
+                      onChange={(e) =>
+                        setManualEntry((prev) => ({ ...prev, testGroup: Number.parseInt(e.target.value) }))
+                      }
+                      placeholder="1, 2, 3, or 4"
+                      min="1"
+                      max="4"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-phase1-time">Phase 1 Reading Time (seconds)</Label>
+                    <Input
+                      id="manual-phase1-time"
+                      type="number"
+                      step="0.01"
+                      value={manualEntry.phase1Time}
+                      onChange={(e) => setManualEntry((prev) => ({ ...prev, phase1Time: e.target.value }))}
+                      placeholder="e.g., 120.50"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-phase1-score">Phase 1 Score (0-10)</Label>
+                    <Input
+                      id="manual-phase1-score"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={manualEntry.phase1Score}
+                      onChange={(e) => setManualEntry((prev) => ({ ...prev, phase1Score: e.target.value }))}
+                      placeholder="e.g., 8"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-phase2-time">Phase 2 Reading Time (seconds)</Label>
+                    <Input
+                      id="manual-phase2-time"
+                      type="number"
+                      step="0.01"
+                      value={manualEntry.phase2Time}
+                      onChange={(e) => setManualEntry((prev) => ({ ...prev, phase2Time: e.target.value }))}
+                      placeholder="e.g., 90.25"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-phase2-score">Phase 2 Score (0-10)</Label>
+                    <Input
+                      id="manual-phase2-score"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={manualEntry.phase2Score}
+                      onChange={(e) => setManualEntry((prev) => ({ ...prev, phase2Score: e.target.value }))}
+                      placeholder="e.g., 9"
+                      required
+                    />
+                  </div>
+                  <div className="col-span-1 md:col-span-2">
                     <Button type="submit" className="w-full">
-                      Add Participant Data
+                      Add Entry
                     </Button>
-                  </form>
-                )}
+                  </div>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
-
       <Toaster />
     </div>
   )
