@@ -78,10 +78,8 @@ interface ChartData {
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#FF6B9D"]
 const TECHNIQUE_COLORS = {
-  1: "#3B82F6", // Blue - Skimming
-  2: "#10B981", // Green - Pointer
-  3: "#F59E0B", // Amber - Subvocalization
-  4: "#EF4444", // Red - Normal
+  1: "#3B82F6", // Blue - Subvocalization Suppression
+  2: "#10B981", // Green - Pointer Aid
 }
 
 export default function AdminDashboard() {
@@ -204,6 +202,10 @@ export default function AdminDashboard() {
         const userData = userDoc.data()
         const userId = userDoc.id
 
+        if (userData.testGroup > 2) {
+          continue
+        }
+
         try {
           const resultsSnapshot = await getDocs(collection(db, "users", userId, "results"))
 
@@ -223,8 +225,8 @@ export default function AdminDashboard() {
             const participant: ParticipantData = {
               id: userId,
               nickname: userData.nickname || `User ${userId.slice(0, 6)}`,
-              testGroup: userData.testGroup || 4,
-              technique: userData.testGroup <= 3 ? "Speed Reading" : "Normal Reading",
+              testGroup: userData.testGroup,
+              technique: userData.technique || "Speed Reading",
               phase1Time: phase1Data.readingTime || 0,
               phase1Score: phase1Data.score || 0,
               phase2Time: phase2Data.readingTime || 0,
@@ -262,6 +264,10 @@ export default function AdminDashboard() {
           querySnapshot.forEach((doc) => {
             const data = doc.data()
             const sessionId = data.sessionId
+
+            if (data.testGroup > 2) {
+              return
+            }
 
             if (!sessionMap.has(sessionId)) {
               sessionMap.set(sessionId, {
@@ -336,20 +342,22 @@ export default function AdminDashboard() {
   }
 
   const loadMockData = () => {
-    const mockParticipants: ParticipantData[] = mockData.participants.map((p, index) => ({
-      id: p.id,
-      nickname: p.name,
-      testGroup: p.technique === "speed_reading" ? Math.floor(Math.random() * 3) + 1 : 4,
-      technique: p.technique === "speed_reading" ? "Speed Reading" : "Normal Reading",
-      phase1Time: p.preReadingTime,
-      phase1Score: Math.floor(Math.random() * 3) + 7,
-      phase2Time: p.postReadingTime,
-      phase2Score: Math.floor(Math.random() * 3) + 7,
-      phase1MistakeRatio: p.preErrorRate / 100,
-      phase2MistakeRatio: p.postErrorRate / 100,
-      timestamp: p.timestamp,
-      improvement: ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100,
-    }))
+    const mockParticipants: ParticipantData[] = mockData.participants
+      .map((p, index) => ({
+        id: p.id,
+        nickname: p.name,
+        testGroup: (index % 2) + 1, // Only groups 1 and 2
+        technique: p.technique === "speed_reading" ? "Speed Reading" : "Normal Reading",
+        phase1Time: p.preReadingTime,
+        phase1Score: Math.floor(Math.random() * 3) + 7,
+        phase2Time: p.postReadingTime,
+        phase2Score: Math.floor(Math.random() * 3) + 7,
+        phase1MistakeRatio: p.preErrorRate / 100,
+        phase2MistakeRatio: p.postErrorRate / 100,
+        timestamp: p.timestamp,
+        improvement: ((p.preReadingTime - p.postReadingTime) / p.preReadingTime) * 100,
+      }))
+      .filter((p) => p.testGroup <= 2) // Only keep groups 1 and 2
 
     setParticipants(mockParticipants)
 
@@ -383,6 +391,15 @@ export default function AdminDashboard() {
       return
     }
 
+    if (manualEntry.testGroup > 2) {
+      toast({
+        title: "Invalid Group",
+        description: "Test group must be 1 or 2",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       const phase1Time = Number.parseFloat(manualEntry.phase1Time)
       const phase1Score = Number.parseInt(manualEntry.phase1Score)
@@ -391,7 +408,7 @@ export default function AdminDashboard() {
 
       const sessionId = `manual_${Date.now()}`
       const timestamp = new Date()
-      const technique = manualEntry.testGroup <= 3 ? "Speed Reading" : "Normal Reading"
+      const technique = manualEntry.testGroup === 1 ? "Subvocalization Suppression" : "Pointer Aid"
 
       await addDoc(collection(db, "reading_study_results"), {
         sessionId,
@@ -472,8 +489,8 @@ export default function AdminDashboard() {
     totalParticipants: participants.length,
     averageImprovement:
       participants.length > 0 ? participants.reduce((sum, p) => sum + p.improvement, 0) / participants.length : 0,
-    speedReadingParticipants: participants.filter((p) => p.testGroup <= 3).length,
-    normalReadingParticipants: participants.filter((p) => p.testGroup === 4).length,
+    group1Participants: participants.filter((p) => p.testGroup === 1).length,
+    group2Participants: participants.filter((p) => p.testGroup === 2).length,
     avgPhase1Comprehension:
       participants.length > 0
         ? (participants.reduce((sum, p) => sum + p.phase1Score, 0) / participants.length / 10) * 100
@@ -496,12 +513,9 @@ export default function AdminDashboard() {
       improvement: Number(p.improvement) || 0,
     }))
 
-  // Group data by technique
   const techniqueGroups = [
-    { name: "Group 1: Skimming", group: 1 },
-    { name: "Group 2: Pointer", group: 2 },
-    { name: "Group 3: Subvocalization", group: 3 },
-    { name: "Group 4: Normal", group: 4 },
+    { name: "Group 1: Subvocalization Suppression", group: 1 },
+    { name: "Group 2: Pointer Aid", group: 2 },
   ]
 
   const techniqueComparisonData = techniqueGroups
@@ -600,10 +614,8 @@ export default function AdminDashboard() {
     }))
 
   const pieData = [
-    { name: "Group 1 (Skimming)", value: participants.filter((p) => p.testGroup === 1).length },
-    { name: "Group 2 (Pointer)", value: participants.filter((p) => p.testGroup === 2).length },
-    { name: "Group 3 (Subvocalization)", value: participants.filter((p) => p.testGroup === 3).length },
-    { name: "Group 4 (Normal)", value: participants.filter((p) => p.testGroup === 4).length },
+    { name: "Group 1 (Subvocalization Suppression)", value: participants.filter((p) => p.testGroup === 1).length },
+    { name: "Group 2 (Pointer Aid)", value: participants.filter((p) => p.testGroup === 2).length },
   ].filter((item) => item.value > 0)
 
   const improvementByMethodData = techniqueGroups
@@ -657,77 +669,6 @@ export default function AdminDashboard() {
       }
     })
     .filter((d) => d !== null)
-
-  const speedReadingParticipants = participants.filter((p) => p.testGroup <= 3)
-  const controlParticipants = participants.filter((p) => p.testGroup === 4)
-
-  const speedReadingVsControlData = [
-    {
-      group: "Speed Reading\n(Groups 1-3)",
-      avgTimeImprovement:
-        speedReadingParticipants.length > 0
-          ? speedReadingParticipants.reduce((sum, p) => sum + p.improvement, 0) / speedReadingParticipants.length
-          : 0,
-      avgPhase1Time:
-        speedReadingParticipants.length > 0
-          ? speedReadingParticipants.reduce((sum, p) => sum + p.phase1Time, 0) / speedReadingParticipants.length
-          : 0,
-      avgPhase2Time:
-        speedReadingParticipants.length > 0
-          ? speedReadingParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / speedReadingParticipants.length
-          : 0,
-      avgPhase1Score:
-        speedReadingParticipants.length > 0
-          ? (speedReadingParticipants.reduce((sum, p) => sum + p.phase1Score, 0) /
-              speedReadingParticipants.length /
-              10) *
-            100
-          : 0,
-      avgPhase2Score:
-        speedReadingParticipants.length > 0
-          ? (speedReadingParticipants.reduce((sum, p) => sum + p.phase2Score, 0) /
-              speedReadingParticipants.length /
-              10) *
-            100
-          : 0,
-      count: speedReadingParticipants.length,
-    },
-    {
-      group: "No Method\n(Group 4)",
-      avgTimeImprovement:
-        controlParticipants.length > 0
-          ? controlParticipants.reduce((sum, p) => sum + p.improvement, 0) / controlParticipants.length
-          : 0,
-      avgPhase1Time:
-        controlParticipants.length > 0
-          ? controlParticipants.reduce((sum, p) => sum + p.phase1Time, 0) / controlParticipants.length
-          : 0,
-      avgPhase2Time:
-        controlParticipants.length > 0
-          ? controlParticipants.reduce((sum, p) => sum + p.phase2Time, 0) / controlParticipants.length
-          : 0,
-      avgPhase1Score:
-        controlParticipants.length > 0
-          ? (controlParticipants.reduce((sum, p) => sum + p.phase1Score, 0) / controlParticipants.length / 10) * 100
-          : 0,
-      avgPhase2Score:
-        controlParticipants.length > 0
-          ? (controlParticipants.reduce((sum, p) => sum + p.phase2Score, 0) / controlParticipants.length / 10) * 100
-          : 0,
-      count: controlParticipants.length,
-    },
-  ]
-
-  const effectivenessStats = {
-    speedReadingImprovement: speedReadingVsControlData[0].avgTimeImprovement,
-    controlImprovement: speedReadingVsControlData[1].avgTimeImprovement,
-    improvementDifference:
-      speedReadingVsControlData[0].avgTimeImprovement - speedReadingVsControlData[1].avgTimeImprovement,
-    speedReadingComprehensionChange:
-      speedReadingVsControlData[0].avgPhase2Score - speedReadingVsControlData[0].avgPhase1Score,
-    controlComprehensionChange:
-      speedReadingVsControlData[1].avgPhase2Score - speedReadingVsControlData[1].avgPhase1Score,
-  }
 
   const allParticipantsPhase1Avg =
     participants.length > 0 ? participants.reduce((sum, p) => sum + p.phase1Time, 0) / participants.length : 0
@@ -905,7 +846,7 @@ export default function AdminDashboard() {
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalParticipants}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.speedReadingParticipants} speed reading, {stats.normalReadingParticipants} normal
+                {stats.group1Participants} subvocalization, {stats.group2Participants} pointer
               </p>
             </CardContent>
           </Card>
@@ -1137,8 +1078,8 @@ export default function AdminDashboard() {
                         </p>
                         <p className="text-xs">
                           <strong>Study Design:</strong> Phase 1 serves as the baseline for all participants (no speed
-                          reading methods). Phase 2 shows results after training/practice (Groups 1-3 with speed reading
-                          techniques, Group 4 with normal reading).
+                          reading methods). Phase 2 shows results after training with speed reading techniques (Group 1:
+                          Subvocalization Suppression, Group 2: Pointer Aid).
                         </p>
                       </div>
                     </CardContent>
@@ -1151,8 +1092,7 @@ export default function AdminDashboard() {
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">Individual Technique Analysis</h2>
                   <p className="text-gray-600">
-                    Detailed comparison of each speed reading technique (Skimming, Pointer, Subvocalization) and the
-                    control group
+                    Detailed comparison of the two speed reading techniques: Subvocalization Suppression and Pointer Aid
                   </p>
                 </div>
 
@@ -1160,9 +1100,7 @@ export default function AdminDashboard() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Technique Comparison Overview</CardTitle>
-                    <CardDescription>
-                      Comparing all four reading techniques across key performance metrics
-                    </CardDescription>
+                    <CardDescription>Comparing both reading techniques across key performance metrics</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="h-96">
@@ -1243,6 +1181,49 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Average Improvement by Method */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Average Improvement (%) per Method</CardTitle>
+                    <CardDescription>
+                      Which technique produces the greatest improvements in time and comprehension? (n = sample size)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={improvementByMethodData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis label={{ value: "Improvement (%)", angle: -90, position: "insideLeft" }} />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload
+                                return (
+                                  <div className="bg-white p-3 border rounded shadow-lg">
+                                    <p className="font-semibold">{data.name}</p>
+                                    <p className="text-sm">Time Improvement: {data.timeImprovement.toFixed(1)}%</p>
+                                    <p className="text-sm">
+                                      Score Change: {data.scoreImprovement > 0 ? "+" : ""}
+                                      {data.scoreImprovement.toFixed(1)} points
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">Sample size: n={data.count}</p>
+                                  </div>
+                                )
+                              }
+                              return null
+                            }}
+                          />
+                          <Legend />
+                          <Bar dataKey="timeImprovement" fill="#3B82F6" name="Time Improvement (%)" />
+                          <Bar dataKey="scoreImprovement" fill="#10B981" name="Score Improvement (points)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* Reading Speed Distribution by Method */}
                 <Card>
@@ -1327,24 +1308,14 @@ export default function AdminDashboard() {
                           <Tooltip cursor={{ strokeDasharray: "3 3" }} />
                           <Legend />
                           <Scatter
-                            name="Group 1: Skimming"
+                            name="Group 1: Subvocalization Suppression"
                             data={comprehensionVsTimeData.filter((d) => d.group === 1)}
                             fill="#3B82F6"
                           />
                           <Scatter
-                            name="Group 2: Pointer"
+                            name="Group 2: Pointer Aid"
                             data={comprehensionVsTimeData.filter((d) => d.group === 2)}
                             fill="#10B981"
-                          />
-                          <Scatter
-                            name="Group 3: Subvocalization"
-                            data={comprehensionVsTimeData.filter((d) => d.group === 3)}
-                            fill="#F59E0B"
-                          />
-                          <Scatter
-                            name="Group 4: Normal"
-                            data={comprehensionVsTimeData.filter((d) => d.group === 4)}
-                            fill="#EF4444"
                           />
                         </ScatterChart>
                       </ResponsiveContainer>
@@ -1383,24 +1354,14 @@ export default function AdminDashboard() {
                           <Tooltip cursor={{ strokeDasharray: "3 3" }} />
                           <Legend />
                           <Scatter
-                            name="Group 1: Skimming"
+                            name="Group 1: Subvocalization Suppression"
                             data={initialSpeedVsImprovementData.filter((d) => d.group === 1)}
                             fill="#3B82F6"
                           />
                           <Scatter
-                            name="Group 2: Pointer"
+                            name="Group 2: Pointer Aid"
                             data={initialSpeedVsImprovementData.filter((d) => d.group === 2)}
                             fill="#10B981"
-                          />
-                          <Scatter
-                            name="Group 3: Subvocalization"
-                            data={initialSpeedVsImprovementData.filter((d) => d.group === 3)}
-                            fill="#F59E0B"
-                          />
-                          <Scatter
-                            name="Group 4: Normal"
-                            data={initialSpeedVsImprovementData.filter((d) => d.group === 4)}
-                            fill="#EF4444"
                           />
                         </ScatterChart>
                       </ResponsiveContainer>
@@ -1702,7 +1663,7 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Manual Data Entry</CardTitle>
-                <CardDescription>Add new participant results manually</CardDescription>
+                <CardDescription>Add new participant results manually (Groups 1-2 only)</CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleManualSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1717,7 +1678,7 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="manual-test-group">Test Group</Label>
+                    <Label htmlFor="manual-test-group">Test Group (1 or 2 only)</Label>
                     <Input
                       id="manual-test-group"
                       type="number"
@@ -1725,11 +1686,12 @@ export default function AdminDashboard() {
                       onChange={(e) =>
                         setManualEntry((prev) => ({ ...prev, testGroup: Number.parseInt(e.target.value) }))
                       }
-                      placeholder="1, 2, 3, or 4"
+                      placeholder="1 or 2"
                       min="1"
-                      max="4"
+                      max="2"
                       required
                     />
+                    <p className="text-xs text-gray-500">1 = Subvocalization Suppression, 2 = Pointer Aid</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="manual-phase1-time">Phase 1 Reading Time (seconds)</Label>

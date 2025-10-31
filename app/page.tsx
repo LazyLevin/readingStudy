@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Progress } from "@/components/ui/progress"
-import { Clock, BookOpen, Brain, Target, AlertCircle, CheckCircle } from "lucide-react"
+import { Clock, BookOpen, Brain, Target, AlertCircle } from "lucide-react"
 import { collection, doc, setDoc, addDoc } from "firebase/firestore"
 import { db, isFirebaseAvailable, logAnalyticsEvent } from "@/lib/firebase"
 import { toast } from "@/hooks/use-toast"
@@ -284,19 +284,14 @@ im Alter von 80.`,
 // Speed reading techniques by group
 const speedReadingTechniquesByGroup: Record<number, { name: string; description: string }> = {
   1: {
-    name: "Skimming-Technik",
+    name: "Subvokalisierung unterdrücken",
     description:
-      "Konzentrieren Sie sich auf das Lesen der ersten und letzten Sätze jedes Absatzes sowie auf Überschriften und Schlüsselwörter. Dies ermöglicht es Ihnen, die Hauptideen schnell zu erfassen, ohne sich in Details zu verlieren. Üben Sie, Themensätze und Schlüsselkonzepte zu identifizieren, um Ihre Skimming-Effizienz zu verbessern.",
+      "Konzentrieren Sie sich bewusst darauf, beim Lesen das innere Mitsprechen zu vermeiden. Versuchen Sie, die Wörter ausschließlich mit den Augen zu erfassen, anstatt sie gedanklich auszusprechen. Da die Sprechgeschwindigkeit die Lesegeschwindigkeit stark begrenzt, kann die Unterdrückung des inneren Mitsprechens zu einer deutlichen Steigerung der Lesegeschwindigkeit führen.",
   },
   2: {
     name: "Zeiger-Technik",
     description:
-      "Verwenden Sie Ihren Finger oder einen Stift, um Ihre Augen beim Lesen entlang des Textes zu führen. Dies hilft, den Fokus zu bewahren und verhindert, dass Ihre Augen abschweifen oder dieselben Zeilen erneut lesen. Bewegen Sie Ihren Zeiger etwas schneller als Ihr angenehmes Lesetempo, um Ihre Geschwindigkeit auf natürliche Weise zu erhöhen.",
-  },
-  3: {
-    name: "Subvokalisierung minimieren",
-    description:
-      "Reduzieren Sie die Angewohnheit, Wörter in Ihrem Kopf zu 'hören', während Sie lesen, was Ihre Lesegeschwindigkeit auf Ihr Sprechtempo begrenzt. Versuchen Sie, leise zu summen oder Ihre innere Stimme mit Zählen zu beschäftigen, während Sie lesen. Diese Technik erfordert Übung, kann aber die Lesegeschwindigkeit erheblich steigern.",
+      "Verwenden Sie Ihren Finger oder einen Stift, um Ihre Augen beim Lesen entlang des Textes zu führen. Dies hilft, den Fokus zu bewahren und verhindert, dass Ihre Augen abschweifen oder dieselben Zeilen erneut lesen. Bewegen Sie Ihren Zeiger etwas schneller als Ihr angenehmes Lesetempo, um Ihre Geschwindigkeit zu erhöhen.",
   },
 }
 
@@ -322,8 +317,7 @@ export default function ReadingStudyApp() {
 
   // Assign test group on component mount
   useEffect(() => {
-    // Randomly assign to group 1, 2, or 3
-    const group = Math.floor(Math.random() * 3) + 1
+    const group = Math.floor(Math.random() * 2) + 1
     setTestGroup(group)
     const newSessionId = generateSessionId()
     setSessionId(newSessionId)
@@ -571,7 +565,8 @@ export default function ReadingStudyApp() {
       <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         <div className="text-center space-y-4 py-2 sm:py-4">
           <p className="text-lg sm:text-xl">
-            Die Teilnahme an der Studie wird ca. 10-15min Zeit in Anspruch nehmen. Bitte nehmen Sie nur teil, wenn Sie ihn in einem Durchgang abschließen können.
+            Die Teilnahme an der Studie wird ca. 10-15min Zeit in Anspruch nehmen. Bitte nehmen Sie nur teil, wenn Sie
+            ihn in einem Durchgang abschließen können.
           </p>
           <p className="text-sm sm:text-base text-gray-600">
             Die App wird die Zeit messen, die Sie zum Lesen benötigen. Bitte beantworten Sie nach dem Lesen einige
@@ -697,9 +692,7 @@ export default function ReadingStudyApp() {
             <Brain className="h-6 w-6 sm:h-7 sm:w-7" />
             Schnelllesetechnik
           </CardTitle>
-          <CardDescription className="text-blue-100 text-sm sm:text-base">
-            Versuchen Sie diese Technik, um Ihre Lesegeschwindigkeit zu verbessern.
-          </CardDescription>
+          
         </CardHeader>
         <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
           <div className="p-4 sm:p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
@@ -732,7 +725,6 @@ export default function ReadingStudyApp() {
           Vielen Dank für Ihre Teilnahme.
         </CardDescription>
       </CardHeader>
-      
     </Card>
   )
 
@@ -790,11 +782,7 @@ export default function ReadingStudyApp() {
           </div>
         )}
 
-        {firebaseStatus === "available" && (
-          <div className="mt-8 flex items-center justify-center">
-          
-          </div>
-        )}
+        {firebaseStatus === "available" && <div className="mt-8 flex items-center justify-center"></div>}
 
         {firebaseStatus === "unavailable" && (
           <div className="mt-8 flex items-center justify-center">
