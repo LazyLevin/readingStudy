@@ -471,7 +471,15 @@ export default function ReadingStudyApp() {
       const newScores = [...scores, correctAnswers]
       setScores(newScores)
 
-      await saveResults(currentPhase, readingTimes[currentPhase], correctAnswers)
+      if (currentPhase === 1) {
+        // Both phases are now complete, save all data
+        const phase1Time = readingTimes[0]
+        const phase1Score = scores[0]
+        const phase2Time = readingTimes[1]
+        const phase2Score = correctAnswers
+
+        await saveBothPhases(phase1Time, phase1Score, phase2Time, phase2Score)
+      }
 
       setCurrentAnswers([])
 
@@ -499,6 +507,95 @@ export default function ReadingStudyApp() {
       })
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const saveBothPhases = async (phase1Time: number, phase1Score: number, phase2Time: number, phase2Score: number) => {
+    try {
+      const timestamp = new Date()
+      const technique = speedReadingTechniquesByGroup[testGroup].name
+      const phase1MistakeRatio = (passages[0].questions.length - phase1Score) / passages[0].questions.length
+      const phase2MistakeRatio = (passages[1].questions.length - phase2Score) / passages[1].questions.length
+
+      if (!isFirebaseAvailable()) {
+        console.log("Firebase not available, results not saved to database")
+        return
+      }
+
+      // Create/update user document
+      await setDoc(doc(db, "users", sessionId), {
+        nickname,
+        testGroup,
+        technique,
+        createdAt: timestamp,
+      })
+
+      // Save both phases to subcollection
+      await setDoc(doc(db, "users", sessionId, "results", "phase1"), {
+        phase: 1,
+        readingTime: phase1Time,
+        score: phase1Score,
+        totalQuestions: passages[0].questions.length,
+        mistakeRatio: phase1MistakeRatio,
+        technique: "Normales Lesen",
+        timestamp,
+      })
+
+      await setDoc(doc(db, "users", sessionId, "results", "phase2"), {
+        phase: 2,
+        readingTime: phase2Time,
+        score: phase2Score,
+        totalQuestions: passages[1].questions.length,
+        mistakeRatio: phase2MistakeRatio,
+        technique,
+        timestamp,
+      })
+
+      // Save to combined results collection
+      await addDoc(collection(db, "reading_study_results"), {
+        sessionId,
+        nickname,
+        phase: 1,
+        readingTime: phase1Time,
+        score: phase1Score,
+        totalQuestions: passages[0].questions.length,
+        timestamp,
+        testGroup,
+        mistakeRatio: phase1MistakeRatio,
+        technique: "Normales Lesen",
+      })
+
+      await addDoc(collection(db, "reading_study_results"), {
+        sessionId,
+        nickname,
+        phase: 2,
+        readingTime: phase2Time,
+        score: phase2Score,
+        totalQuestions: passages[1].questions.length,
+        timestamp,
+        testGroup,
+        mistakeRatio: phase2MistakeRatio,
+        technique,
+      })
+
+      console.log("Both phases saved successfully")
+
+      // Log analytics event
+      logAnalyticsEvent("study_completed", {
+        test_group: testGroup,
+        phase1_time: phase1Time,
+        phase2_time: phase2Time,
+        phase1_score: phase1Score,
+        phase2_score: phase2Score,
+        improvement: phase1Time ? ((phase1Time - phase2Time) / phase1Time) * 100 : 0,
+      })
+    } catch (error) {
+      console.error("Error saving both phases:", error)
+      toast({
+        title: "Warning",
+        description: "Results could not be saved to database, but study is complete.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -692,7 +789,6 @@ export default function ReadingStudyApp() {
             <Brain className="h-6 w-6 sm:h-7 sm:w-7" />
             Schnelllesetechnik
           </CardTitle>
-          
         </CardHeader>
         <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
           <div className="p-4 sm:p-6 border-2 border-blue-100 rounded-lg bg-blue-50">
