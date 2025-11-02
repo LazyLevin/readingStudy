@@ -32,7 +32,7 @@ const passages = [
     nicht töten. Sie dürfen nicht kämpfen. Sie müssen friedlich leben.
     Nach dem Krieg in Kalinga, in dem so viele Menschen gestorben waren, veränderte sich Asoka. Er wurde ein 
     anderer Mensch und begann, über sein Volk nachzudenken und darüber, wie er ihr Leben verbessern könnte. 
-    Er baute Straßen und pflanzte entlang dieser Straßen Bäume. Die Menschen konnten unter den Bäumen Halt machen, um sich auszuruhen, wenn es heiß war, und sie konnten die Früchte der Bäume essen. Asoka baute 
+    Er baute Straßen und pflanzte Bäume entlang der Straßen. Die Menschen konnten unter den Bäumen Halt machen, um sich auszuruhen, wenn es heiß war, und sie konnten die Früchte der Bäume essen. Asoka baute 
     Häuser für Reisende, in denen die Menschen sich ausruhen und schlafen konnten, ohne dafür zu bezahlen. Er interessierte sich auch 
     für Medizin. Er baute Pflanzen an, um Medikamente herzustellen, die er seinem Volk gab.
     Er gab auch Tieren Medikamente. Er wollte nicht, dass Menschen oder Tiere krank waren. Nach 
@@ -78,7 +78,7 @@ const passages = [
           "den Krieg verloren.",
           "viele Menschen getötet.",
           "nicht kämpfen wollen.",
-          "sind Buddhisten geworden.",
+          "sich dem Buddhismus zugewandt",
         ],
         correct: 1,
       },
@@ -162,8 +162,7 @@ Englisch. Seine Werke sind bis heute weit verbreitet und seine Bücher sind in v
 Sprachen. Tagore wurde jedoch erst im Alter von 51 Jahren weltweit für seine Werke bekannt, als er 
 begann, seine Gedichte auf Englisch zu schreiben.
 Tagore wurde 1861 in Kalkutta, Indien, in eine wohlhabende Familie geboren. Schon in jungen Jahren 
-interessierte er sich für Lesen, Schreiben und Musik. Sein erstes Gedichtband schrieb er im Alter von nur 17 Jahren. Er beobachtete gerne die Dinge um ihn herum: die  
-Gedichte, als er erst 17 Jahre alt war. Er beobachtete gerne die Dinge um ihn herum: die 
+interessierte er sich für Lesen, Schreiben und Musik. Sein erstes Gedichtband schrieb er im Alter von nur 17 Jahren. Er beobachtete gerne die Dinge um ihn herum: die 
 Bäume, die Vögel, den Himmel, die Blumen und das Gras. All diese Dinge waren für ihn wunderschön. 
 Er interessierte sich für Gott und dafür, wie Menschen ihr Leben bestmöglich leben können.
 Als er alt genug war, um zur Schule zu gehen, schickte ihn sein Vater auf eine Schule in seiner Stadt, aber 
@@ -186,11 +185,10 @@ Universitäten lehrte. Er sprach über Indien und die indische Bevölkerung, üb
 er sprach auch über seine Schule. Viele der Menschen, die er traf, interessierten sich für seine Schule 
 und schickten ihm Geld, damit die Schule weiterbestehen konnte.
 Tagore schrieb weiter und gewann 1913 den Nobelpreis. Er erhielt diesen Preis, 
-weil er in diesem Jahr als der beste Schriftsteller der Welt angesehen wurde. 1921 wurde Tagores
-wurde seine Schule zur Universität, und Studenten aus aller Welt kamen, um dort zu studieren. Im 
+weil er in diesem Jahr als der beste Schriftsteller der Welt angesehen wurde. Im Jahr 1921 wurde Tagores Schule zur Universität, und Studenten aus aller Welt kamen, um dort zu studieren. Im 
 Alter von 68 Jahren wurde er Maler.
 Tagore verbrachte den größten Teil seines Lebens damit, die Ideen des Ostens und des Westens zu vereinen. Er starb 1941 
-im Alter von 80.`,
+im Alter von 80 Jahren.`,
     questions: [
       {
         question: "Tagore wurde geboren in",
