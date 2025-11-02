@@ -43,9 +43,7 @@ const passages = [
     Asoka schuf neue Gesetze für sein Volk. Er schrieb die Gesetze auf Stein und auf Eisenstücke. 
     Er stellte diese Steine und Eisenstücke an verschiedenen Orten in seinem Land auf, damit die Menschen, wenn sie sie lesen, die Gesetze des Landes kennen und versuchen, sie zu befolgen. 
      
-     Heute, nach 2.000 Jahren, können wir noch immer viele dieser Steine und Eisenstücke sehen und Asokas Gesetze lesen, sodass wir viel über ihn wissen. Wir wissen, dass er ein großer indischer König war, der  
-     den Lehren Buddhas folgte. Wir wissen, dass auch sein Volk den Lehren Buddhas folgte. 
-     Wir wissen, dass sein Land sehr groß war, dass es keine Kriege gab und die Menschen 
+     Heute, nach 2.000 Jahren, können wir noch immer viele dieser Steine und Eisenstücke sehen und Asokas Gesetze lesen, sodass wir viel über ihn wissen. Wir wissen, dass er ein großer indischer König war, der, wie auch sein Volk, den Lehren Buddhas folgte. Wir wissen, dass sein Land sehr groß war, dass es keine Kriege gab und die Menschen 
      in Frieden lebten und glücklich waren. Seine Schriften finden wir im Norden Indiens und auch im 
      im Süden Indiens.
      Asoka war fast 40 Jahre lang König, aber nach seinem Tod blieb das Land nicht friedlich. 
