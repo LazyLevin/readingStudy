@@ -1,8 +1,7 @@
 # Reading Study
 
 
-Take part in the survey: https://wseminar-studie.vercel.app/
+Hier gehostet: https://wseminar-studie.vercel.app/
 
-# Why
-I created this small webapp in order to execute a study to investigate the efficacy of popular speed reading methods such as suppressing subvocalisation or skimming. 
-The results will be made public after the termination of the study, expectedly at the end of this summer.
+# Warum
+Ich habe diese web-app mit dem Tool v0 von vercel erstellt, um eine Studie zur Untersuchung der Wirksamkeit beliebter Schnelllesemethoden wie z.B. der Unterdrückung der Subvokalisierung durchzuführen.
